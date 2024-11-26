@@ -1,0 +1,48 @@
+---
+- name: Ensure dependencies are installed
+  package:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - curl
+    - unzip
+
+- name: Download Vault binary
+  get_url:
+    url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_amd64.zip"
+    dest: "/tmp/vault_{{ vault_version }}.zip"
+
+- name: Extract Vault binary
+  unarchive:
+    src: "/tmp/vault_{{ vault_version }}.zip"
+    dest: "/usr/local/bin/"
+    remote_src: yes
+
+- name: Ensure Vault binary is executable
+  file:
+    path: "{{ vault_bin_path }}"
+    mode: "0755"
+    state: file
+
+- name: Create Vault Agent config directory
+  file:
+    path: "{{ vault_config_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy Vault Agent configuration
+  template:
+    src: "vault-agent-config.hcl.j2"
+    dest: "{{ vault_agent_config_file }}"
+
+- name: Deploy systemd service for Vault Agent
+  template:
+    src: "vault-agent.service.j2"
+    dest: "{{ vault_service_file }}"
+
+- name: Reload systemd and enable Vault Agent service
+  systemd:
+    name: vault-agent
+    daemon_reload: yes
+    enabled: yes
+    state: started

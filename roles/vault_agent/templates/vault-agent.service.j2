@@ -1,0 +1,15 @@
+[Unit]
+Description=HashiCorp Vault Agent
+Documentation=https://www.vaultproject.io/docs/agent
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/vault agent -config={{ vault_agent_config_file }}
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5
+StartLimitInterval=0
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target

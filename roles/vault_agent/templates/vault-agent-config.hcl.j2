@@ -1,0 +1,21 @@
+pid_file = "/var/run/vault-agent.pid"
+
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      role_id_file_path   = "/etc/vault-agent/role_id"
+      secret_id_file_path = "/etc/vault-agent/secret_id"
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/etc/vault-agent/vault-token"
+    }
+  }
+}
+
+cache {
+  use_auto_auth_token = true
+}

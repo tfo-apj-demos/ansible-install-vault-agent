@@ -1,5 +1,9 @@
 pid_file = "/var/run/vault-agent.pid"
 
+vault {
+  address = "https://vault.hashicorp.local:8200"
+}
+
 auto_auth {
   method "approle" {
     mount_path = "auth/approle"
@@ -18,4 +22,9 @@ auto_auth {
 
 cache {
   use_auto_auth_token = true
+}
+
+template {
+  source      = "/etc/vault-agent/config.hcl.ctmpl"
+  destination = "/etc/myapp/config.hcl"
 }

@@ -1,48 +1,67 @@
 ---
-- name: Ensure dependencies are installed
-  package:
-    name: "{{ item }}"
-    state: present
-  loop:
-    - curl
-    - unzip
+- name: Wait for SSH connection to become available
+  ansible.builtin.wait_for_connection:
+    delay: 30
+    timeout: 180
+    sleep: 15
+  register: connection_wait
+  ignore_errors: yes
 
-- name: Download Vault binary
-  get_url:
-    url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_amd64.zip"
-    dest: "/tmp/vault_{{ vault_version }}.zip"
+- name: Check connection status
+  debug:
+    msg: "Host is reachable"
+  when: connection_wait is succeeded
 
-- name: Extract Vault binary
-  unarchive:
-    src: "/tmp/vault_{{ vault_version }}.zip"
-    dest: "/usr/local/bin/"
-    remote_src: yes
+- block:
+    - name: Ensure dependencies are installed
+      package:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - curl
+        - unzip
 
-- name: Ensure Vault binary is executable
-  file:
-    path: "{{ vault_bin_path }}"
-    mode: "0755"
-    state: file
+    - name: Download Vault binary
+      get_url:
+        url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_amd64.zip"
+        dest: "/tmp/vault_{{ vault_version }}.zip"
 
-- name: Create Vault Agent config directory
-  file:
-    path: "{{ vault_config_dir }}"
-    state: directory
-    mode: "0755"
+    - name: Extract Vault binary
+      unarchive:
+        src: "/tmp/vault_{{ vault_version }}.zip"
+        dest: "/usr/local/bin/"
+        remote_src: yes
 
-- name: Deploy Vault Agent configuration
-  template:
-    src: "vault-agent-config.hcl.j2"
-    dest: "{{ vault_agent_config_file }}"
+    - name: Ensure Vault binary is executable
+      file:
+        path: "{{ vault_bin_path }}"
+        mode: "0755"
+        state: file
 
-- name: Deploy systemd service for Vault Agent
-  template:
-    src: "vault-agent.service.j2"
-    dest: "{{ vault_service_file }}"
+    - name: Create Vault Agent config directory
+      file:
+        path: "{{ vault_config_dir }}"
+        state: directory
+        mode: "0755"
 
-- name: Reload systemd and enable Vault Agent service
-  systemd:
-    name: vault-agent
-    daemon_reload: yes
-    enabled: yes
-    state: started
+    - name: Deploy Vault Agent configuration
+      template:
+        src: "vault-agent-config.hcl.j2"
+        dest: "{{ vault_agent_config_file }}"
+
+    - name: Deploy systemd service for Vault Agent
+      template:
+        src: "vault-agent.service.j2"
+        dest: "{{ vault_service_file }}"
+
+    - name: Reload systemd and enable Vault Agent service
+      systemd:
+        name: vault-agent
+        daemon_reload: yes
+        enabled: yes
+        state: started
+  when: connection_wait is succeeded
+  rescue:
+    - name: Log unreachable host
+      debug:
+        msg: "Host is unreachable after waiting. Skipping Vault Agent configuration."

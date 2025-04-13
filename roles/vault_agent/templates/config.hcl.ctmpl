@@ -1,0 +1,11 @@
+# This configuration file is rendered by Vault Agent.
+# Vault Agent fetches secrets from Vault and uses them to populate this file.
+
+{{ with secret "secret/data/myapp/config" }}
+vault_address = "{{ .Data.data.vault_address }}"
+api_token     = "{{ .Data.data.api_token }}"
+{{ else }}
+# Fallback values if the secret is not available.
+vault_address = "https://vault.hashicorp.local:8200"
+api_token     = "default-token"
+{{ end }}

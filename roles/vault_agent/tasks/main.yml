@@ -12,6 +12,10 @@
     msg: "Host is reachable"
   when: connection_wait is succeeded
 
+- name: Gather facts manually
+  ansible.builtin.setup:
+  when: connection_wait is succeeded
+
 - block:
     - name: Ensure dependencies are installed
       package:

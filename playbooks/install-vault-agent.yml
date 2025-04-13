@@ -2,5 +2,6 @@
 - name: Install and configure Vault Agent
   hosts: all 
   become: yes
+  gather_facts: false
   roles:
     - vault_agent

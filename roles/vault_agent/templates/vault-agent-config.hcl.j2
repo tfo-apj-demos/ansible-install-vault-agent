@@ -20,10 +20,6 @@ auto_auth {
   }
 }
 
-cache {
-  use_auto_auth_token = true
-}
-
 template {
   source      = "/etc/vault-agent/config.hcl.ctmpl"
   destination = "/etc/myapp/config.hcl"

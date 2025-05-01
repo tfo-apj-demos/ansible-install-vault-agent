@@ -29,7 +29,7 @@ listener "tcp" {
   tls_disable = true
 }
 
-template {
+{# template {
   source      = "/etc/vault-agent/config.hcl.ctmpl"
   destination = "/etc/myapp/config.hcl"
-}
+} #}

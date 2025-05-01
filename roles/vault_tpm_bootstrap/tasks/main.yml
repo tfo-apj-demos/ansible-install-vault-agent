@@ -1,107 +1,98 @@
-- name: TPM2-backed Vault Agent Bootstrap
-  hosts: all
-  become: yes
-  vars:
-    vault_addr: "https://vault.hashicorp.local:8200"
-    vault_ca_cert: "/etc/ssl/certs/vault-ca.pem"
-    vault_approle_role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"
-    vault_approle_secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"
-    vault_pki_role: "machine-auth"
-    domain: "hashicorp.local"
+---
+# roles/vault_tpm_bootstrap/tasks/main.yml
 
-  tasks:
-    - name: Ensure TPM and Vault dependencies are installed
-      package:
-        name:
-          - tpm2-tools
-          - tpm2-openssl
-          - libtss2-tcti-tabrmd
-          - openssl
-          - unzip
-          - curl
-        state: present
+- name: Ensure TPM and Vault dependencies are installed
+  package:
+    name:
+      - tpm2-tools
+      - tpm2-openssl
+      - libtss2-tcti-tabrmd
+      - openssl
+      - unzip
+      - curl
+    state: present
 
-    - name: Add ansible user to tss group
-      user:
-        name: "{{ ansible_user }}"
-        groups: tss
-        append: yes
+- name: Add ansible user to tss group
+  user:
+    name: "{{ ansible_user }}"
+    groups: tss
+    append: yes
 
-    - name: Add TPM2 provider config to OpenSSL
-      blockinfile:
-        path: /etc/ssl/openssl.cnf
-        block: |
-          [openssl_init]
-          providers = provider_sect
+- name: Add TPM2 provider config to OpenSSL
+  blockinfile:
+    path: /etc/ssl/openssl.cnf
+    block: |
+      [openssl_init]
+      providers = provider_sect
 
-          [provider_sect]
-          default = default_sect
-          tpm2 = tpm2_sect
+      [provider_sect]
+      default = default_sect
+      tpm2 = tpm2_sect
 
-          [tpm2_sect]
-          module = /usr/lib64/ossl-modules/tpm2.so
-        marker: "# {mark} TPM2 Provider Setup"
+      [tpm2_sect]
+      module = /usr/lib64/ossl-modules/tpm2.so
+    marker: "# {mark} TPM2 Provider Setup"
 
-    - name: Create TPM2 primary key context
-      command: tpm2_createprimary -C o -g sha256 -G rsa -c /root/primary.ctx
-      args:
-        creates: /root/primary.ctx
+- name: Create TPM2 primary key context
+  command: tpm2_createprimary -C o -g sha256 -G rsa -c /root/primary.ctx
+  args:
+    creates: /root/primary.ctx
 
-    - name: Create TPM2 keypair
-      command: tpm2_create -C /root/primary.ctx -g sha256 -G rsa -u /root/key.pub -r /root/key.priv
-      args:
-        creates: /root/key.pub
+- name: Create TPM2 keypair
+  command: tpm2_create -C /root/primary.ctx -g sha256 -G rsa -u /root/key.pub -r /root/key.priv
+  args:
+    creates: /root/key.pub
 
-    - name: Load and persist TPM2 key
-      shell: |
-        tpm2_load -C /root/primary.ctx -u /root/key.pub -r /root/key.priv -c /root/key.ctx
-        tpm2_evictcontrol -C o -c /root/key.ctx 0x81000000
-      args:
-        creates: /root/key.ctx
+- name: Load and persist TPM2 key
+  shell: |
+    tpm2_load -C /root/primary.ctx -u /root/key.pub -r /root/key.priv -c /root/key.ctx
+    tpm2_evictcontrol -C o -c /root/key.ctx 0x81000000
+  args:
+    creates: /root/key.ctx
 
-    - name: Generate CSR using TPM key
-      shell: |
-        openssl req -new \
-          -provider tpm2 -provider default \
-          -propquery '?provider=tpm2' \
-          -key handle:0x81000000 -keyform tpm2 \
-          -subj "/CN={{ inventory_hostname }}.{{ domain }}" \
-          -out /root/tpm_csr.pem
-      args:
-        creates: /root/tpm_csr.pem
+- name: Generate CSR using TPM key
+  shell: |
+    openssl req -new \
+      -provider tpm2 -provider default \
+      -propquery '?provider=tpm2' \
+      -key handle:0x81000000 -keyform tpm2 \
+      -subj "/CN={{ inventory_hostname }}.{{ domain }}" \
+      -out /root/tpm_csr.pem
+  args:
+    creates: /root/tpm_csr.pem
 
-    - name: Authenticate to Vault and Sign CSR
-      community.hashi_vault.vault_pki_sign_certificate:
-        url: "{{ vault_addr }}"
-        cacert: "{{ vault_ca_cert }}"
-        validate_certs: true
-        auth_method: approle
-        role_id: "{{ vault_approle_role_id }}"
-        secret_id: "{{ vault_approle_secret_id }}"
-        csr: "{{ lookup('file', '/root/tpm_csr.pem') }}"
-        common_name: "{{ inventory_hostname }}.{{ domain }}"
-        role_name: "{{ vault_pki_role }}"
-        ttl: "720h"
-      register: signed_cert
+- name: Authenticate to Vault and Sign CSR
+  community.hashi_vault.vault_pki_sign_certificate:
+    url: "{{ vault_addr }}"
+    cacert: "{{ vault_ca_cert }}"
+    validate_certs: true
+    auth_method: approle
+    role_id: "{{ vault_approle_role_id }}"
+    secret_id: "{{ vault_approle_secret_id }}"
+    csr: "{{ lookup('file', '/root/tpm_csr.pem') }}"
+    common_name: "{{ inventory_hostname }}.{{ domain }}"
+    role_name: "{{ vault_pki_role }}"
+    ttl: "720h"
+  register: signed_cert
 
-    - name: Write signed certificate to file
-      copy:
-        content: "{{ signed_cert.data.data.certificate }}"
-        dest: /etc/vault.d/cert.pem
-        mode: "0644"
+- name: Write signed certificate to file
+  copy:
+    content: "{{ signed_cert.data.data.certificate }}"
+    dest: /etc/vault.d/cert.pem
+    mode: "0644"
 
-    - name: Deploy Vault Agent config
-      template:
-        src: vault-agent-config.hcl.j2
-        dest: /etc/vault.d/vault-agent-config.hcl
+- name: Deploy Vault Agent config
+  template:
+    src: vault-agent-config.hcl.j2
+    dest: /etc/vault.d/vault-agent-config.hcl
 
-    - name: Deploy Vault Agent systemd unit
-      template:
-        src: vault-agent.service.j2
-        dest: /etc/systemd/system/vault-agent.service
+- name: Deploy Vault Agent systemd unit
+  template:
+    src: vault-agent.service.j2
+    dest: /etc/systemd/system/vault-agent.service
 
-    - name: Enable and start Vault Agent
-      systemd:
-        name: vault-agent
-        enabled: yes
-        state: started
+- name: Enable and start Vault Agent
+  systemd:
+    name: vault-agent
+    enabled: yes
+    state: started

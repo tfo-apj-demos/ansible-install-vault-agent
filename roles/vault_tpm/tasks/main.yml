@@ -5,8 +5,6 @@
   package:
     name:
       - tpm2-tools
-      - tpm2-openssl
-      - libtss2-tcti-tabrmd
       - openssl
       - unzip
       - curl

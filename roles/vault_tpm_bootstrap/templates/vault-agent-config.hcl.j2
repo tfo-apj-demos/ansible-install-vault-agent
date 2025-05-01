@@ -1,0 +1,35 @@
+pid_file = "/var/run/vault-agent.pid"
+
+vault {
+  address = "https://vault.hashicorp.local:8200"
+}
+
+auto_auth {
+  method "approle" {
+    mount_path = "auth/approle"
+    config = {
+      role_id_file_path   = "/etc/vault-agent/role_id"
+      secret_id_file_path = "/etc/vault-agent/secret_id"
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/etc/vault-agent/vault-token"
+    }
+  }
+}
+
+cache {
+  use_auto_auth_token = true
+}
+
+listener "tcp" {
+  address     = "127.0.0.1:8201"
+  tls_disable = true
+}
+
+template {
+  source      = "/etc/vault-agent/config.hcl.ctmpl"
+  destination = "/etc/myapp/config.hcl"
+}

@@ -1,0 +1,11 @@
+[Unit]
+Description=Vault Agent with TPM TLS Auth
+After=network.target
+
+[Service]
+ExecStart=/usr/local/bin/vault agent -config=/etc/vault.d/vault-agent-config.hcl
+Restart=on-failure
+User=root
+
+[Install]
+WantedBy=multi-user.target

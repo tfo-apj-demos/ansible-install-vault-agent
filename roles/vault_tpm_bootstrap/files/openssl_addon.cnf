@@ -1,0 +1,11 @@
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+tpm2 = tpm2_sect
+
+[tpm2_sect]
+module = /usr/lib64/ossl-modules/tpm2.so

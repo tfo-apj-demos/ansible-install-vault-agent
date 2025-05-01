@@ -1,0 +1,6 @@
+vault_addr: "https://vault.hashicorp.local:8200"
+vault_ca_cert: "/etc/ssl/certs/vault-ca.pem"
+vault_approle_role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"
+vault_approle_secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"
+vault_pki_role: "machine-auth"
+domain: "hashicorp.local"

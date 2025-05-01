@@ -1,7 +1,6 @@
----
-- name: Configure vTPM for Vault
-- hosts: all
+- name: Bootstrap Vault Agent with TPM support
+  hosts: all
   become: yes
   gather_facts: false
   roles:
-    - role: vault_tpm_bootstrap
+    - vault_tpm

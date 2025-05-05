@@ -11,6 +11,11 @@
   hosts: localhost
   gather_facts: no
   vars:
+    vault_addr: "vault.hashicorp.local:8200"
+    vault_pki_role: "gcve"
+    vault_approle_role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"  # Example, set this according to your environment
+    vault_approle_secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"  # Example, set this according to your environment
     inventory_hostname: "{{ hostvars['web-server-01']['inventory_hostname'] }}"
+    domain: "hashicorp.local"  # Replace with the actual domain
   roles:
     - vault_sign

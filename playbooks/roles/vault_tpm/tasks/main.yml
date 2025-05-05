@@ -1,6 +1,5 @@
 ---
-# roles/vault_tpm/tasks/main.yml
-
+# Ensure TPM and Vault dependencies are installed on the remote VM
 - name: Ensure TPM and Vault dependencies are installed
   package:
     name:
@@ -10,12 +9,14 @@
       - curl
     state: present
 
+# Add ansible user to tss group (needed for TPM access)
 - name: Add ansible user to tss group
   user:
     name: "{{ ansible_user }}"
     groups: tss
     append: yes
 
+# Add TPM2 provider config to OpenSSL
 - name: Add TPM2 provider config to OpenSSL
   blockinfile:
     path: /etc/ssl/openssl.cnf
@@ -31,16 +32,19 @@
       module = /usr/lib64/ossl-modules/tpm2.so
     marker: "# {mark} TPM2 Provider Setup"
 
+# Create TPM2 primary key context
 - name: Create TPM2 primary key context
   command: tpm2_createprimary -C o -g sha256 -G rsa -c /root/primary.ctx
   args:
     creates: /root/primary.ctx
 
+# Create TPM2 keypair
 - name: Create TPM2 keypair
   command: tpm2_create -C /root/primary.ctx -g sha256 -G rsa -u /root/key.pub -r /root/key.priv
   args:
     creates: /root/key.pub
 
+# Load and persist TPM2 key
 - name: Load and persist TPM2 key
   shell: |
     tpm2_load -C /root/primary.ctx -u /root/key.pub -r /root/key.priv -c /root/key.ctx
@@ -48,6 +52,7 @@
   args:
     creates: /root/key.ctx
 
+# Generate CSR using TPM key
 - name: Generate CSR using TPM key
   shell: |
     openssl req -new \
@@ -59,6 +64,7 @@
   args:
     creates: /root/tpm_csr.pem
 
+# Ensure CSR was created successfully
 - name: Check if tpm_csr.pem exists
   stat:
     path: /root/tpm_csr.pem
@@ -66,23 +72,25 @@
   failed_when: csr_stat.stat.exists == false
   changed_when: false
 
+# Slurp CSR content from remote host
 - name: Slurp CSR content from remote host
   ansible.builtin.slurp:
-    src: /root/tpm_csr.pem  # Path on the REMOTE host
+    src: /root/tpm_csr.pem
   register: remote_csr_data
 
-# Make sure the previous task succeeded and actually got content
+# Fail if CSR could not be read from remote host
 - name: Fail if CSR could not be read from remote host
   ansible.builtin.fail:
-    msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."    
+    msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."
   when: remote_csr_data.content is not defined or remote_csr_data.content | length == 0
 
+# Authenticate to Vault and sign CSR (via Execution Environment)
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:
     url: "{{ vault_addr }}"
     path: "pki/sign/{{ vault_pki_role }}"
     data:
-      csr: "{{ ('file', '/root/tpm_csr.pem') }}"
+      csr: "{{ remote_csr_data.content | b64decode }}"
       common_name: "{{ inventory_hostname }}.{{ domain }}"
       ttl: "720h"
     auth_method: approle
@@ -90,24 +98,9 @@
     secret_id: "{{ vault_approle_secret_id }}"
   register: signed_cert
 
+# Write signed certificate to the VM
 - name: Write signed certificate to file
   copy:
     content: "{{ signed_cert.data.certificate }}"
     dest: /etc/vault.d/cert.pem
     mode: "0644"
-
-# - name: Deploy Vault Agent config
-#   template:
-#     src: vault-agent-config.hcl.j2
-#     dest: /etc/vault.d/vault-agent-config.hcl
-
-# - name: Deploy Vault Agent systemd unit
-#   template:
-#     src: vault-agent.service.j2
-#     dest: /etc/systemd/system/vault-agent.service
-
-# - name: Enable and start Vault Agent
-#   systemd:
-#     name: vault-agent
-#     enabled: yes
-#     state: started

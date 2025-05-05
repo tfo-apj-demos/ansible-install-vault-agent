@@ -1,5 +1,5 @@
 ---
-# roles/vault_tpm_bootstrap/tasks/main.yml
+# roles/vault_tpm/tasks/main.yml
 
 - name: Ensure TPM and Vault dependencies are installed
   package:

@@ -66,12 +66,23 @@
   failed_when: csr_stat.stat.exists == false
   changed_when: false
 
+- name: Slurp CSR content from remote host
+  ansible.builtin.slurp:
+    src: /root/tpm_csr.pem  # Path on the REMOTE host
+  register: remote_csr_data
+
+# Make sure the previous task succeeded and actually got content
+- name: Fail if CSR could not be read from remote host
+  ansible.builtin.fail:
+    msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."    
+  when: remote_csr_data.content is not defined or remote_csr_data.content | len
+
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:
     url: "{{ vault_addr }}"
     path: "pki/sign/{{ vault_pki_role }}"
     data:
-      csr: "{{ lookup('file', '/root/tpm_csr.pem') }}"
+      csr: "{{ ('file', '/root/tpm_csr.pem') }}"
       common_name: "{{ inventory_hostname }}.{{ domain }}"
       ttl: "720h"
     auth_method: approle

@@ -1,5 +1,4 @@
 ---
-
 - name: Bootstrap Vault Agent with TPM support
   hosts: all
   become: yes

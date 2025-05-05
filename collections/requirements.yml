@@ -1,8 +1,3 @@
 ---
 collections:
-  - name: ansible.platform
-  - name: ansible.hub
-  - name: ansible.controller
-  - name: ansible.eda
-  - name: community.general
   - name: community.hashi_vault

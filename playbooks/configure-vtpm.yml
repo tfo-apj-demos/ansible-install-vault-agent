@@ -2,20 +2,21 @@
 
 - name: Bootstrap Vault Agent with TPM support
   hosts: all
-  become: yes
+  become: true
   gather_facts: false
   roles:
     - vault_tpm
 
 - name: Sign CSR via Vault using EE
   hosts: localhost
-  gather_facts: no
+  gather_facts: false
   vars:
     vault_addr: "vault.hashicorp.local:8200"
     vault_pki_role: "gcve"
     vault_approle_role_id: "{{ lookup('env', 'VAULT_ROLE_ID') }}"  # Example, set this according to your environment
     vault_approle_secret_id: "{{ lookup('env', 'VAULT_SECRET_ID') }}"  # Example, set this according to your environment
-    inventory_hostname: "{{ hostvars['web-server-01']['inventory_hostname'] }}"
+    target_hostname: "{{ hostvars['web-server-01']['inventory_hostname'] }}"
+    remote_csr_data: "{{ hostvars['web-server-01'].remote_csr_data_fact }}"  # Use the new fact here
     domain: "hashicorp.local"  # Replace with the actual domain
   roles:
     - vault_sign

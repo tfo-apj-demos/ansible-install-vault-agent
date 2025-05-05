@@ -1,3 +1,4 @@
+# roles/vault_tpm/tasks/main.yml
 ---
 # Ensure TPM and Vault dependencies are installed on the remote VM
 - name: Ensure TPM and Vault dependencies are installed
@@ -84,7 +85,7 @@
     msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."
   when: remote_csr_data.content is not defined or remote_csr_data.content | length == 0
 
-# Set a fact to pass the CSR data to the next role
+# Set a custom fact to pass the CSR data to the next role
 - name: Set remote CSR data as a fact
   ansible.builtin.set_fact:
-    remote_csr_data: "{{ remote_csr_data }}"
+    remote_csr_data_fact: "{{ remote_csr_data }}"

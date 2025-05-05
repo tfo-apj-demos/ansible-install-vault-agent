@@ -75,7 +75,7 @@
 - name: Fail if CSR could not be read from remote host
   ansible.builtin.fail:
     msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."    
-  when: remote_csr_data.content is not defined or remote_csr_data.content | len
+  when: remote_csr_data.content is not defined or remote_csr_data.content | length == 0
 
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:

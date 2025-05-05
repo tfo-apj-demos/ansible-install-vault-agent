@@ -60,24 +60,23 @@
     creates: /root/tpm_csr.pem
 
 - name: Authenticate to Vault and Sign CSR
-  community.hashi_vault.vault_pki_sign_certificate:
+  community.hashi_vault.vault_write:
     url: "{{ vault_addr }}"
-    cacert: "{{ vault_ca_cert }}"
-    validate_certs: true
+    path: "pki/sign/{{ vault_pki_role }}"
+    data:
+      csr: "{{ lookup('file', '/root/tpm_csr.pem') }}"
+      common_name: "{{ inventory_hostname }}.{{ domain }}"
+      ttl: "720h"
     auth_method: approle
     role_id: "{{ vault_approle_role_id }}"
     secret_id: "{{ vault_approle_secret_id }}"
-    csr: "{{ lookup('file', '/root/tpm_csr.pem') }}"
-    common_name: "{{ inventory_hostname }}.{{ domain }}"
-    role_name: "{{ vault_pki_role }}"
-    ttl: "720h"
   register: signed_cert
 
-# - name: Write signed certificate to file
-#   copy:
-#     content: "{{ signed_cert.data.data.certificate }}"
-#     dest: /etc/vault.d/cert.pem
-#     mode: "0644"
+- name: Write signed certificate to file
+  copy:
+    content: "{{ signed_cert.data.certificate }}"
+    dest: /etc/vault.d/cert.pem
+    mode: "0644"
 
 # - name: Deploy Vault Agent config
 #   template:

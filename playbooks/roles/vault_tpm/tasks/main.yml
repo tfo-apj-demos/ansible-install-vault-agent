@@ -55,7 +55,7 @@
       -propquery '?provider=tpm2' \
       -key handle:0x81000000 -keyform tpm2 \
       -subj "/CN={{ inventory_hostname }}.{{ domain }}" \
-      -out /root/tpm_csr.pem
+      -out '/root/tpm_csr.pem'
   args:
     creates: /root/tpm_csr.pem
 

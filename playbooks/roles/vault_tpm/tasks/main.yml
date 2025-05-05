@@ -59,6 +59,13 @@
   args:
     creates: /root/tpm_csr.pem
 
+- name: Check if tpm_csr.pem exists
+  stat:
+    path: /root/tpm_csr.pem
+  register: csr_stat
+  failed_when: csr_stat.stat.exists == false
+  changed_when: false
+
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:
     url: "{{ vault_addr }}"

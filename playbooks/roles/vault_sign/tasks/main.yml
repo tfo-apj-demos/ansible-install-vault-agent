@@ -15,7 +15,7 @@
     secret_id: "{{ vault_approle_secret_id }}"
   register: signed_cert
 
-# Write signed certificate to the VM (back to the remote machine)
+# Write signed certificate to the VM
 - name: Write signed certificate to file
   copy:
     content: "{{ signed_cert.data.certificate }}"

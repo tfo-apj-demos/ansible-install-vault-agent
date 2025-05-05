@@ -83,24 +83,3 @@
   ansible.builtin.fail:
     msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."
   when: remote_csr_data.content is not defined or remote_csr_data.content | length == 0
-
-# Authenticate to Vault and sign CSR (via Execution Environment)
-- name: Authenticate to Vault and Sign CSR
-  community.hashi_vault.vault_write:
-    url: "{{ vault_addr }}"
-    path: "pki/sign/{{ vault_pki_role }}"
-    data:
-      csr: "{{ remote_csr_data.content | b64decode }}"
-      common_name: "{{ inventory_hostname }}.{{ domain }}"
-      ttl: "720h"
-    auth_method: approle
-    role_id: "{{ vault_approle_role_id }}"
-    secret_id: "{{ vault_approle_secret_id }}"
-  register: signed_cert
-
-# Write signed certificate to the VM
-- name: Write signed certificate to file
-  copy:
-    content: "{{ signed_cert.data.certificate }}"
-    dest: /etc/vault.d/cert.pem
-    mode: "0644"

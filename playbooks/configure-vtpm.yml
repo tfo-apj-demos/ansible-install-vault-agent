@@ -1,11 +1,10 @@
 ---
+
 - name: Bootstrap Vault Agent with TPM support
   hosts: all
   become: yes
   gather_facts: false
-
   collections:
-    - community.hashi_vault
-
+    - name: community.hashi_vault
   roles:
     - vault_tpm

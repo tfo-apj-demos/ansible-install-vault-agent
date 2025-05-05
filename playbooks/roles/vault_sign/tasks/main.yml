@@ -1,12 +1,10 @@
 ---
+
 # roles/vault_sign/tasks/main.yml
 - name: Install Python dependencies in EE
-  hosts: localhost
-  tasks:
-    - name: Install hvac using pip
-      pip:
-        name: hvac==3.0.0
-        executable: /usr/bin/pip3
+  ansible.builtin.pip:
+    name: hvac==3.0.0
+    executable: /usr/bin/pip3
 
 # Authenticate to Vault and Sign CSR (via Execution Environment)
 - name: Authenticate to Vault and Sign CSR
@@ -24,7 +22,7 @@
 
 # Write signed certificate to the VM
 - name: Write signed certificate to file
-  copy:
+  ansible.builtin.copy:
     content: "{{ signed_cert.data.certificate }}"
     dest: "/etc/vault.d/cert.pem"
     mode: "0644"

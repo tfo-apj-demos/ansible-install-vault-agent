@@ -5,6 +5,6 @@
   become: yes
   gather_facts: false
   collections:
-    - name: community.hashi_vault
+    - community.hashi_vault
   roles:
     - vault_tpm

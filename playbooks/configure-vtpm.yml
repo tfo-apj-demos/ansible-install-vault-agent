@@ -3,7 +3,5 @@
   hosts: all
   become: yes
   gather_facts: false
-  collections:
-    - community.hashi_vault
   roles:
     - vault_tpm

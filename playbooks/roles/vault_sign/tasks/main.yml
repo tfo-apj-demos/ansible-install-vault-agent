@@ -18,7 +18,7 @@
     auth_method: approle
     role_id: "{{ vault_approle_role_id }}"
     secret_id: "{{ vault_approle_secret_id }}"
-    verify: false
+    validate_certs: false
   register: signed_cert
 
 # Write signed certificate to the VM

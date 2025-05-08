@@ -8,7 +8,7 @@
 
 - name: Suppress SSL warnings
   ansible.builtin.set_fact:
-    ANSIBLE_SKIP_SSL_WARNINGS: true
+    ansible_skip_ssl_warnings: true
 
 # Authenticate to Vault and Sign CSR (via Execution Environment)
 - name: Authenticate to Vault and Sign CSR

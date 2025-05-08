@@ -6,6 +6,10 @@
     name: hvac==2.3.0
     executable: /usr/bin/pip3
 
+- name: Suppress SSL warnings
+  ansible.builtin.set_fact:
+    ANSIBLE_SKIP_SSL_WARNINGS: true
+
 # Authenticate to Vault and Sign CSR (via Execution Environment)
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:

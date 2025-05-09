@@ -7,45 +7,6 @@
     name: hvac==2.3.0
     executable: /usr/bin/pip3
 
-# Create temporary directory for PKI CA storage
-- name: Create temporary directory for PKI CA storage
-  ansible.builtin.file:
-    path: /tmp/ssh_ca.PKI/
-    state: directory
-    mode: '0755'
-
-# Download PKI CA certificate
-- name: Download PKI CA certificate
-  ansible.builtin.get_url:
-    url: https://production.vault.11eb56d6-0f95-3a99-a33c-0242ac110007.aws.hashicorp.cloud:8200/v1/pki/ca/pem
-    headers:
-      X-Vault-Namespace: admin/tfo-apj-demos
-    dest: /tmp/ssh_ca.PKI/hcp-vault-ca.crt
-    mode: "0644"
-
-# Ensure the ca-trust directory has the correct permissions
-- name: Ensure the ca-trust directory has the correct permissions
-  ansible.builtin.file:
-    path: /etc/pki/ca-trust/source/anchors/
-    state: directory
-    mode: '0755'
-  become: true
-
-# Copy CA public certificates to ca-trust
-- name: Copy CA public certificates to ca-trust
-  ansible.builtin.copy:
-    src: /tmp/ssh_ca.PKI/hcp-vault-ca.crt
-    dest: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
-    mode: "0644"
-  become: true  # Add privilege escalation
-
-# Register HCP Vault CA
-- name: Register HCP Vault CA
-  ansible.builtin.command:
-    cmd: update-ca-trust extract
-    creates: /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
-  become: yes  # Add privilege escalation
-
 # Authenticate to Vault and Sign CSR (via Execution Environment)
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:

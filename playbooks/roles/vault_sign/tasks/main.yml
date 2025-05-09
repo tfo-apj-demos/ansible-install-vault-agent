@@ -62,7 +62,7 @@
     validate_certs: true
     ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: vault_health
-  retries: 3
+  retries: 4
   delay: 5
   timeout: 10
 

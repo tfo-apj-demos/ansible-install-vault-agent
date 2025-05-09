@@ -43,6 +43,10 @@
   delay: 5
   timeout: 10
 
+- name: Debug response from Vault connectivity test
+  debug:
+    msg: "{{ vault_health }}"
+
 - name: Fail if Vault is unreachable
   ansible.builtin.fail:
     msg: "Unable to reach Vault at {{ vault_addr }}"

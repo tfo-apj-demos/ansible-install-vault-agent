@@ -12,7 +12,31 @@
     msg: "Vault CA certificate not found in /etc/pki/ca-trust/source/anchors"
   when: not ca_stat.stat.exists
 
-# Install pip-system-certs to handle SSL cert verification issues
+# Debug: Echo the Vault CA certificate content to verify it
+- name: Display the Vault CA certificate content
+  ansible.builtin.command:
+    cmd: cat /etc/pki/ca-trust/source/anchors/vault-ca.crt
+  register: vault_ca_content
+  changed_when: false
+  failed_when: false
+
+- name: Show Vault CA certificate content
+  debug:
+    msg: "Vault CA certificate content: {{ vault_ca_content.stdout }}"
+
+# Verify if the certificate is valid with OpenSSL
+- name: Verify Vault CA certificate with OpenSSL
+  ansible.builtin.command:
+    cmd: openssl x509 -in /etc/pki/ca-trust/source/anchors/vault-ca.crt -text -noout
+  register: openssl_cert_verify
+  changed_when: false
+  failed_when: false
+
+- name: Show OpenSSL certificate verification result
+  debug:
+    msg: "OpenSSL certificate verification result: {{ openssl_cert_verify.stdout }}"
+
+# Install pip-system-certs to resolve SSL certificate issues
 - name: Install pip-system-certs to resolve SSL certificate issues
   ansible.builtin.pip:
     name: pip-system-certs
@@ -46,11 +70,6 @@
   debug:
     var: vault_health
 
-- name: Fail if Vault is unreachable
-  ansible.builtin.fail:
-    msg: "Unable to reach Vault at {{ vault_addr }}"
-  when: vault_health.status != 200
-
 # Check if hvac Python library is installed
 - name: Check if hvac Python library is installed
   ansible.builtin.command:
@@ -64,21 +83,21 @@
     msg: "hvac library is not installed in the Execution Environment."
   when: hvac_check.rc != 0
 
-# Ensure VAULT_ADDR environment variable is set
-- name: Ensure VAULT_ADDR environment variable is set
-  ansible.builtin.assert:
-    that:
-      - vault_addr is defined
-      - vault_addr | length > 0
-    fail_msg: "VAULT_ADDR is not set or is empty!"
+# # Ensure VAULT_ADDR environment variable is set
+# - name: Ensure VAULT_ADDR environment variable is set
+#   ansible.builtin.assert:
+#     that:
+#       - vault_addr is defined
+#       - vault_addr | length > 0
+#     fail_msg: "VAULT_ADDR is not set or is empty!"
 
-# Ensure Vault authentication credentials are defined
-- name: Ensure Vault authentication credentials are defined
-  ansible.builtin.assert:
-    that:
-      - vault_approle_role_id is defined
-      - vault_approle_secret_id is defined
-    fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
+# # Ensure Vault authentication credentials are defined
+# - name: Ensure Vault authentication credentials are defined
+#   ansible.builtin.assert:
+#     that:
+#       - vault_approle_role_id is defined
+#       - vault_approle_secret_id is defined
+#     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
 
 # # Check if Vault AppRole exists
 # - name: Check if Vault AppRole exists

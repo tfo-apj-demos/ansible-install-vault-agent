@@ -102,21 +102,21 @@
     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
 
 
-# # Authenticate to Vault and Sign CSR (via Execution Environment)
-# - name: Authenticate to Vault and Sign CSR
-#   community.hashi_vault.vault_write:
-#     url: "{{ vault_addr }}"
-#     path: "pki/sign/{{ vault_pki_role }}"
-#     data:
-#       csr: "{{ remote_csr_data.content | b64decode }}"
-#       common_name: "{{ inventory_hostname }}.{{ domain }}"
-#       ttl: "720h"
-#     auth_method: approle
-#     role_id: "{{ vault_approle_role_id }}"
-#     secret_id: "{{ vault_approle_secret_id }}"
-#     validate_certs: true
-#     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-#   register: signed_cert
+# Authenticate to Vault and Sign CSR (via Execution Environment)
+- name: Authenticate to Vault and Sign CSR
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    path: "pki/sign/{{ vault_pki_role }}"
+    data:
+      csr: "{{ remote_csr_data.content | b64decode }}"
+      common_name: "{{ inventory_hostname }}.{{ domain }}"
+      ttl: "720h"
+    auth_method: approle
+    role_id: "{{ role_id }}"  # This is passed in via AAP credentials
+    secret_id: "{{ secret_id }}"  # This is passed in via AAP credentials
+    validate_certs: true
+    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  register: signed_cert
 
 # # Write signed certificate to the VM
 # - name: Write signed certificate to file

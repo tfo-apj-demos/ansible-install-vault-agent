@@ -36,7 +36,7 @@
     method: GET
     return_content: true
     validate_certs: true
-    ca_path: "/etc/pki/ca-trust/source/anchors/"  # Directory containing Vault CA certs
+    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: vault_health
   retries: 3
   delay: 5

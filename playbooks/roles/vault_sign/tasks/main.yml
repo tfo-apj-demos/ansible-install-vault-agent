@@ -120,12 +120,12 @@
 
 - name: Debug the signed certificate
   debug:
-    msg: "{{ signed_cert }}"
+    msg: "{{ signed_cert.data.certificate }}"
 
-# Copy the signed certificate back to the target machine
-- name: Copy signed certificate back to the target machine
-  ansible.builtin.copy:
-    content: "{{ signed_cert.data.certificate }}"
-    dest: "/etc/vault.d/cert.pem"
-    mode: "0644"
-  delegate_to: "{{ target_hostname }}"
+# # Copy the signed certificate back to the target machine
+# - name: Copy signed certificate back to the target machine
+#   ansible.builtin.copy:
+#     content: "{{ signed_cert.data.certificate }}"
+#     dest: "/etc/vault.d/cert.pem"
+#     mode: "0644"
+#   delegate_to: "{{ target_hostname }}"

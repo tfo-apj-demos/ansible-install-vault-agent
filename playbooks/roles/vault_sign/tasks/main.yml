@@ -120,7 +120,7 @@
 
 - name: Debug the signed certificate
   debug:
-    msg: "{{ signed_cert.data.certificate }}"
+    msg: "{{ signed_cert.data }}"
 
 # # Copy the signed certificate back to the target machine
 # - name: Copy signed certificate back to the target machine

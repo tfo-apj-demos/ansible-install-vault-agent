@@ -6,9 +6,22 @@
     name: hvac==2.3.0
     executable: /usr/bin/pip3
 
-- name: Suppress SSL warnings
-  ansible.builtin.set_fact:
-    ansible_skip_ssl_warnings: true
+- name: Download PKI CA certificate
+  ansible.builtin.get_url:
+    url: https://production.vault.11eb56d6-0f95-3a99-a33c-0242ac110007.aws.hashicorp.cloud:8200/v1/pki/ca/pem
+    headers:
+      X-Vault-Namespace: admin/tfo-apj-demos
+    dest: /tmp/ssh_ca.PKI/hcp-vault-ca.crt
+    mode: "0644"
+
+- name: Copy CA public certificates to ca-trust
+  ansible.builtin.assemble:
+    src: /tmp/ssh_ca.PKI/
+    dest: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
+    mode: "0644"
+
+- name: Register HCP Vault CA
+  ansible.builtin.command: update-ca-trust extract
 
 # Authenticate to Vault and Sign CSR (via Execution Environment)
 - name: Authenticate to Vault and Sign CSR

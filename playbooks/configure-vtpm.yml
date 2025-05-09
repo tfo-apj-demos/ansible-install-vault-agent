@@ -13,8 +13,6 @@
   vars:
     vault_addr: "https://vault.hashicorp.local:8200"
     vault_pki_role: "gcve"
-    vault_approle_role_id: "{{ vault_approle_role_id }}"
-    vault_approle_secret_id: "{{ vault_approle_secret_id }}"
     target_hostname: "{{ hostvars['web-server-01']['inventory_hostname'] }}"
     remote_csr_data: "{{ hostvars['web-server-01'].remote_csr_data_fact }}"  # Use the new fact here
     domain: "hashicorp.local"  # Replace with the actual domain

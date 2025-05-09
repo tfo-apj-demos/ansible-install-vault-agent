@@ -12,6 +12,12 @@
     msg: "Vault CA certificate not found in /etc/pki/ca-trust/source/anchors"
   when: not ca_stat.stat.exists
 
+# Install pip-system-certs to handle SSL cert verification issues
+- name: Install pip-system-certs to resolve SSL certificate issues
+  ansible.builtin.pip:
+    name: pip-system-certs
+    executable: /usr/bin/pip3
+
 # Test Vault connectivity
 - name: Test Vault connectivity
   ansible.builtin.uri:

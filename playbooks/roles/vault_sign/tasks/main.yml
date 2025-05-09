@@ -6,6 +6,12 @@
     name: hvac==2.3.0
     executable: /usr/bin/pip3
 
+- name: Create temporary directory for PKI CA storage
+  ansible.builtin.file:
+    path: /tmp/ssh_ca.PKI/
+    state: directory
+    mode: '0755'
+
 - name: Download PKI CA certificate
   ansible.builtin.get_url:
     url: https://production.vault.11eb56d6-0f95-3a99-a33c-0242ac110007.aws.hashicorp.cloud:8200/v1/pki/ca/pem

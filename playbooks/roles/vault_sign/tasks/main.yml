@@ -29,7 +29,7 @@
     path: /etc/pki/ca-trust/source/anchors/
     state: directory
     mode: '0755'
-  become: yes
+  become: true
 
 # Copy CA public certificates to ca-trust
 - name: Copy CA public certificates to ca-trust
@@ -37,11 +37,13 @@
     src: /tmp/ssh_ca.PKI/hcp-vault-ca.crt
     dest: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
     mode: "0644"
-  become: yes  # Add privilege escalation
+  become: true  # Add privilege escalation
 
 # Register HCP Vault CA
 - name: Register HCP Vault CA
-  ansible.builtin.command: update-ca-trust extract
+  ansible.builtin.command:
+    cmd: update-ca-trust extract
+    creates: /etc/pki/ca-trust/extracted/openssl/ca-bundle.trust.crt
   become: yes  # Add privilege escalation
 
 # Authenticate to Vault and Sign CSR (via Execution Environment)

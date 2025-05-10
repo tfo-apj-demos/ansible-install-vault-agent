@@ -46,7 +46,9 @@
       file:
         path: "{{ vault_config_dir }}"
         state: directory
-        mode: "0755"
+        mode: "0775"  # Ensures the directory is writable by the owner and group
+        owner: root    # Adjust ownership if necessary
+        group: root    # Adjust group if necessary
 
     - name: Deploy Vault Agent configuration
       template:

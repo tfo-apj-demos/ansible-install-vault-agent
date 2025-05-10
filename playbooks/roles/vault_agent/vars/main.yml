@@ -1,5 +1,5 @@
 vault_version: "1.19.1"
 vault_bin_path: "/usr/local/bin/vault"
-vault_config_dir: "/etc/vault-agent"
-vault_agent_config_file: "/etc/vault-agent/vault-agent-config.hcl"
+vault_config_dir: "/etc/vault.d"
+vault_agent_config_file: "/etc/vault.d/vault-agent-config.hcl"
 vault_service_file: "/etc/systemd/system/vault-agent.service"

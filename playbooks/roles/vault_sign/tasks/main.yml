@@ -129,3 +129,4 @@
     dest: "/etc/vault.d/cert.pem"
     mode: "0644"
   delegate_to: "{{ target_hostname }}"
+  become: true

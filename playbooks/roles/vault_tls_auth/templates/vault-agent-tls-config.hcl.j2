@@ -1,0 +1,57 @@
+pid_file = "/var/run/vault-agent.pid"
+
+vault {
+  address = "https://vault.hashicorp.local:8200"
+}
+
+auto_auth {
+  method "cert" {
+    mount_path = "auth/client-cert-auth"
+    config = {
+      cert_file = "{{ cert_dir }}/cert.pem"
+      key_file  = "{{ cert_dir }}/key.pem"
+      reload = true
+
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/etc/vault-agent/vault-token"
+    }
+  }
+}
+
+cache {
+  use_auto_auth_token = true
+}
+
+listener "tcp" {
+  address     = "127.0.0.1:8201"
+  tls_disable = true
+}
+
+# Certificate renewal configuration
+template {
+  source      = "{{ cert_dir }}/templates/cert-renewal.ctmpl.j2"
+  destination = "{{ cert_dir }}/cert.pem"
+  error_on_missing_key = true
+  reload_on_change = true
+}
+
+# Private key template
+template {
+  source      = "{{ cert_dir }}/templates/key-renewal.ctmpl.j2"
+  destination = "{{ cert_dir }}/key.pem"
+  error_on_missing_key = true
+  reload_on_change = true
+  perms       = 0600
+}
+
+# CA certificate template
+template {
+  source      = "{{ cert_dir }}/templates/ca-renewal.ctmpl.j2"
+  destination = "{{ cert_dir }}/ca.pem"
+  error_on_missing_key = true
+  reload_on_change = true
+}

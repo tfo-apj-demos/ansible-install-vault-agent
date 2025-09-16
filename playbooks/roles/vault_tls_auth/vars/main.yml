@@ -1,0 +1,7 @@
+vault_addr: "https://vault.hashicorp.local:8200"
+vault_pki_role: "gcve"
+vault_pki_path: "pki"
+domain: "hashicorp.local"
+cert_dir: "/etc/vault.d" 
+vault_config_dir: "/etc/vault.d"
+vault_agent_config_file: "/etc/vault.d/vault-agent-config.hcl"

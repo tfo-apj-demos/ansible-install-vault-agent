@@ -1,0 +1,7 @@
+---
+# handlers/main.yml
+- name: restart vault-agent
+  ansible.builtin.service:
+    name: vault-agent
+    state: restarted
+  delegate_to: "{{ target_hostname }}"

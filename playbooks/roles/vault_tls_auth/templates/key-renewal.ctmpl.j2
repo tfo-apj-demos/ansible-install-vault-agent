@@ -1,0 +1,4 @@
+{{- /* Template for private key renewal */ -}}
+{{ with secret "pki/issue/{{ vault_pki_role }}" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=720h" }}
+{{ .Data.private_key }}
+{{ end }}

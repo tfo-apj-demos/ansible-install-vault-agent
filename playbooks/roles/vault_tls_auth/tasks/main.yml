@@ -1,0 +1,183 @@
+---
+# roles/vault_tls_auth/tasks/main.yml
+
+# Ensure Vault CA certificate is installed
+- name: Check if Vault CA certificate exists
+  ansible.builtin.stat:
+    path: /etc/pki/ca-trust/source/anchors/vault-ca.crt
+  register: ca_stat
+
+- name: Fail if Vault CA certificate is missing
+  ansible.builtin.fail:
+    msg: "Vault CA certificate not found in /etc/pki/ca-trust/source/anchors"
+  when: not ca_stat.stat.exists
+
+# Debug: Echo the Vault CA certificate content to verify it
+- name: Display the Vault CA certificate content
+  ansible.builtin.command:
+    cmd: cat /etc/pki/ca-trust/source/anchors/vault-ca.crt
+  register: vault_ca_content
+  changed_when: false
+  failed_when: false
+
+- name: Show Vault CA certificate content
+  debug:
+    msg: "Vault CA certificate content: {{ vault_ca_content.stdout }}"
+
+# Verify if the certificate is valid with OpenSSL
+- name: Verify Vault CA certificate with OpenSSL
+  ansible.builtin.command:
+    cmd: openssl x509 -in /etc/pki/ca-trust/source/anchors/vault-ca.crt -text -noout
+  register: openssl_cert_verify
+  changed_when: false
+  failed_when: false
+
+- name: Show OpenSSL certificate verification result
+  debug:
+    msg: "OpenSSL certificate verification result: {{ openssl_cert_verify.stdout }}"
+
+# Install pip-system-certs to resolve SSL certificate issues
+- name: Install pip-system-certs to resolve SSL certificate issues
+  ansible.builtin.pip:
+    name: pip-system-certs
+    executable: /usr/bin/pip3
+
+# Debug: Check certificate trust
+- name: Check if the Vault CA is in the trust store
+  ansible.builtin.command: update-ca-trust list
+  register: ca_trust_check
+  changed_when: false
+  failed_when: false
+
+- name: Display Vault CA trust status
+  debug:
+    msg: "Vault CA trust store: {{ ca_trust_check.stdout }}"
+
+# Test Vault connectivity
+- name: Test Vault connectivity
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/health"
+    method: GET
+    return_content: true
+    validate_certs: true
+    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  register: vault_health
+  retries: 4
+  delay: 5
+  timeout: 10
+
+- name: Debug response from Vault connectivity test
+  debug:
+    var: vault_health
+
+# Check if hvac Python library is installed
+- name: Check if hvac Python library is installed
+  ansible.builtin.command:
+    cmd: "/usr/bin/python3 -c 'import hvac'"
+  register: hvac_check
+  failed_when: hvac_check.rc != 0
+  changed_when: false
+
+- name: Fail if hvac library is not installed
+  ansible.builtin.fail:
+    msg: "hvac library is not installed in the Execution Environment."
+  when: hvac_check.rc != 0
+
+# Ensure VAULT_ADDR environment variable is set
+- name: Ensure VAULT_ADDR environment variable is set
+  ansible.builtin.assert:
+    that:
+      - vault_addr is defined
+      - vault_addr | length > 0
+    fail_msg: "VAULT_ADDR is not set or is empty!"
+
+# Ensure Vault authentication credentials are defined
+- name: Ensure Vault authentication credentials are defined
+  ansible.builtin.assert:
+    that:
+      - role_id is defined
+      - role_id | length > 0
+      - secret_id is defined
+      - secret_id | length > 0
+    fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
+
+# Request a TLS certificate from Vault PKI and wrap the response
+- name: Issue certificate from Vault PKI
+  community.hashi_vault.vault_pki_generate_certificate:
+    path: "{{ vault_pki_path | default('pki/issue/example-dot-com') }}"
+    common_name: "{{ inventory_hostname }}.{{ domain }}"
+    wrap_ttl: "30m"  # Wrap the response for 30 minutes
+    #alt_names: "{{ vault_cert_alt_names | default([]) }}"
+    #ip_sans: "{{ vault_cert_ip_sans | default([]) }}"
+    ttl: "{{ vault_cert_ttl | default('8760h') }}"  # Default 1 year
+  register: vault_cert_response
+
+- name: Display wrapped token
+  debug:
+    msg: "Wrapped Token: {{ vault_cert_response.wrap_info.token }}"
+
+- name: Store wrapped response in variable
+  set_fact:
+    wrapped_cert:
+      token: "{{ vault_cert_response.wrap_info.token }}"
+      ttl: "{{ vault_cert_response.wrap_info.ttl }}"
+      creation_time: "{{ vault_cert_response.wrap_info.creation_time }}"
+
+# Copy the wrapped certificate to the target machine
+- name: Copy wrapped response to the target machine
+  ansible.builtin.copy:
+    content: "{{ vault_cert_response.wrap_info.token }}"
+    dest: "/etc/vault.d/wrapped_token"
+    mode: "0644"
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
+- name: Unwrap token and get certificate data
+  community.hashi_vault.vault_write:
+    path: sys/wrapping/unwrap
+    token: "{{ vault_cert_response.wrap_info.token }}"
+  register: unwrapped_cert
+  delegate_to: "{{ target_hostname }}"
+
+- name: Write certificate files
+  copy:
+    content: "{{ item.content }}"
+    dest: "{{ cert_dir | default('/etc/ssl/private') }}/{{ item.filename }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { content: "{{ unwrapped_cert.data.data.certificate }}", filename: "cert.pem", mode: "0644" }
+    - { content: "{{ unwrapped_cert.data.data.private_key }}", filename: "key.pem", mode: "0600" }
+    - { content: "{{ unwrapped_cert.data.data.issuing_ca }}", filename: "ca.pem", mode: "0644" }
+  no_log: true  # Hide sensitive content from logs
+  delegate_to: "{{ target_hostname }}"
+
+- name: Create template directory for certificate renewal
+  file:
+    path: "{{ cert_dir }}/templates"
+    state: directory
+    mode: '0750'
+  delegate_to: "{{ target_hostname }}"
+
+- name: Deploy certificate renewal template
+  template:
+    src: cert-renewal.ctmpl.j2
+    dest: "{{ cert_dir }}/templates/cert-renewal.ctmpl"
+    mode: '0640'
+  delegate_to: "{{ target_hostname }}"
+
+# Need to clobber the existing Vault Agent Configuration to use new TLS Auth
+- name: Deploy Vault Agent configuration
+  template:
+    src: "vault-agent-tls-config.hcl.j2"
+    dest: "{{ vault_agent_config_file }}"
+    force: true
+  notify:
+    - restart vault-agent
+  delegate_to: "{{ target_hostname }}"
+
+  handlers:
+    - name: restart vault-agent
+      ansible.builtin.service:
+        name: vault-agent
+        state: restarted
+  delegate_to: "{{ target_hostname }}"

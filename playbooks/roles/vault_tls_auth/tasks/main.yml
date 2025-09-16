@@ -8,6 +8,7 @@
     method: GET
     return_content: true
     validate_certs: false
+    status_code: [200, 429, 472, 473, 501, 503]  # Accept various Vault status codes
   register: vault_health
   retries: 4
   delay: 5

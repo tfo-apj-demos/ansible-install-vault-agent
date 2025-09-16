@@ -18,21 +18,6 @@
   debug:
     var: vault_health
 
-# Check and install hvac Python library if needed
-- name: Check if hvac Python library is installed
-  ansible.builtin.command:
-    cmd: "/usr/bin/python3 -c 'import hvac'"
-  register: hvac_check
-  changed_when: false
-  ignore_errors: true
-
-- name: Install hvac Python library
-  ansible.builtin.pip:
-    name: hvac
-    state: present
-  when: hvac_check.rc != 0
-  become: true
-
 # Ensure VAULT_ADDR environment variable is set
 - name: Ensure VAULT_ADDR environment variable is set
   ansible.builtin.assert:

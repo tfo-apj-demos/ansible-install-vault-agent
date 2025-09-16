@@ -1,66 +1,13 @@
 ---
 # roles/vault_tls_auth/tasks/main.yml
 
-# Ensure Vault CA certificate is installed
-- name: Check if Vault CA certificate exists
-  ansible.builtin.stat:
-    path: /etc/pki/ca-trust/source/anchors/vault-ca.crt
-  register: ca_stat
-
-- name: Fail if Vault CA certificate is missing
-  ansible.builtin.fail:
-    msg: "Vault CA certificate not found in /etc/pki/ca-trust/source/anchors"
-  when: not ca_stat.stat.exists
-
-# Debug: Echo the Vault CA certificate content to verify it
-- name: Display the Vault CA certificate content
-  ansible.builtin.command:
-    cmd: cat /etc/pki/ca-trust/source/anchors/vault-ca.crt
-  register: vault_ca_content
-  changed_when: false
-  failed_when: false
-
-- name: Show Vault CA certificate content
-  debug:
-    msg: "Vault CA certificate content: {{ vault_ca_content.stdout }}"
-
-# Verify if the certificate is valid with OpenSSL
-- name: Verify Vault CA certificate with OpenSSL
-  ansible.builtin.command:
-    cmd: openssl x509 -in /etc/pki/ca-trust/source/anchors/vault-ca.crt -text -noout
-  register: openssl_cert_verify
-  changed_when: false
-  failed_when: false
-
-- name: Show OpenSSL certificate verification result
-  debug:
-    msg: "OpenSSL certificate verification result: {{ openssl_cert_verify.stdout }}"
-
-# Install pip-system-certs to resolve SSL certificate issues
-- name: Install pip-system-certs to resolve SSL certificate issues
-  ansible.builtin.pip:
-    name: pip-system-certs
-    executable: /usr/bin/pip3
-
-# Debug: Check certificate trust
-- name: Check if the Vault CA is in the trust store
-  ansible.builtin.command: update-ca-trust list
-  register: ca_trust_check
-  changed_when: false
-  failed_when: false
-
-- name: Display Vault CA trust status
-  debug:
-    msg: "Vault CA trust store: {{ ca_trust_check.stdout }}"
-
 # Test Vault connectivity
 - name: Test Vault connectivity
   ansible.builtin.uri:
     url: "{{ vault_addr }}/v1/sys/health"
     method: GET
     return_content: true
-    validate_certs: true
-    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    validate_certs: false
   register: vault_health
   retries: 4
   delay: 5

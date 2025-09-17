@@ -112,7 +112,7 @@
     url: "{{ vault_addr }}/v1/sys/health"
     method: GET
     return_content: true
-    validate_certs: true
+    validate_certs: false
     ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
     status_code: [200, 429, 472, 473, 501, 503]  # Accept various Vault status codes
   register: vault_health

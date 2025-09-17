@@ -146,7 +146,8 @@
 - name: Issue certificate from Vault PKI
   community.hashi_vault.vault_pki_generate_certificate:
     url: "{{ vault_addr }}"
-    role_name: "{{ vault_pki_path }}+{{ vault_pki_role }}"
+    role_name: "{{ vault_pki_role }}"
+    mount_point: "{{ vault_pki_path }}"
     common_name: "{{ inventory_hostname }}.{{ domain }}"
     auth_method: approle
     role_id: "{{ role_id }}" # This is passed in via AAP credentials

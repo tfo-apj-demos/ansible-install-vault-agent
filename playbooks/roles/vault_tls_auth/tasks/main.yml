@@ -152,7 +152,9 @@
     auth_method: approle
     role_id: "{{ role_id }}" # This is passed in via AAP credentials
     secret_id: "{{ secret_id }}" # This is passed in via AAP credentials
-    validate_certs: false
+    #validate_certs: false
+    validate_certs: true
+    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
     #alt_names: "{{ vault_cert_alt_names | default([]) }}"
     #ip_sans: "{{ vault_cert_ip_sans | default([]) }}"
     ttl: "{{ vault_cert_ttl | default('8760h') }}"  # Default 1 year

@@ -106,6 +106,15 @@
     msg: "Failed to install hvac library in the Execution Environment."
   when: hvac_verify.rc != 0
 
+# Update the SSL environment variables task
+- name: Set SSL environment variables
+  ansible.builtin.set_fact:
+    vault_ssl_env:
+      VAULT_CACERT: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+      REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+      SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+      PYTHONHTTPSVERIFY: "1"
+
 # Test Vault connectivity
 - name: Test Vault connectivity
   ansible.builtin.uri:
@@ -147,15 +156,6 @@
       - secret_id is defined
       - secret_id | length > 0
     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
-
-# Update the SSL environment variables task
-- name: Set SSL environment variables
-  ansible.builtin.set_fact:
-    vault_ssl_env:
-      VAULT_CACERT: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-      REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-      SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-      PYTHONHTTPSVERIFY: "1"
 
 # Update the certificate generation task
 - name: Issue certificate from Vault PKI

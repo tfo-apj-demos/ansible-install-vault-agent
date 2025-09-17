@@ -9,15 +9,13 @@
     force: true
     validate_certs: false  # Only for initial CA download
   register: ca_download
-  become: true
 
 # Update CA trust store after download
 - name: Update CA trust store
   ansible.builtin.command:
     cmd: update-ca-trust
-  become: true
   when: ca_download.changed
-  
+
 # Ensure Vault CA certificate is installed
 - name: Check if Vault CA certificate exists
   ansible.builtin.stat:

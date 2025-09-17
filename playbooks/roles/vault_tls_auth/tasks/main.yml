@@ -145,9 +145,12 @@
 # Request a TLS certificate from Vault PKI and wrap the response
 - name: Issue certificate from Vault PKI
   community.hashi_vault.vault_pki_generate_certificate:
-    path: "{{ vault_pki_path | default('pki/issue/example-dot-com') }}"
+    url: "{{ vault_addr }}"
+    role_name: "{{ vault_pki_path }}+{{ vault_pki_role }}"
     common_name: "{{ inventory_hostname }}.{{ domain }}"
-    wrap_ttl: "30m"  # Wrap the response for 30 minutes
+    auth_method: approle
+    role_id: "{{ role_id }}" # This is passed in via AAP credentials
+    secret_id: "{{ secret_id }}" # This is passed in via AAP credentials
     #alt_names: "{{ vault_cert_alt_names | default([]) }}"
     #ip_sans: "{{ vault_cert_ip_sans | default([]) }}"
     ttl: "{{ vault_cert_ttl | default('8760h') }}"  # Default 1 year

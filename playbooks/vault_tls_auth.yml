@@ -1,6 +1,7 @@
 ---
 - name: Bootstrap Vault Agent with TLS support
   hosts: localhost
+  become: true
   gather_facts: false
   vars:
     vault_addr: "https://vault.hashicorp.local:8200"

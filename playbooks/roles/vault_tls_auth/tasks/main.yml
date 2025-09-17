@@ -51,11 +51,21 @@
   debug:
     msg: "OpenSSL certificate verification result: {{ openssl_cert_verify.stdout }}"
 
+# Install Python3 and pip if not present
+- name: Install Python3 and pip
+  ansible.builtin.package:
+    name: 
+      - python3
+      - python3-pip
+    state: present
+  become: true
+
 # Install pip-system-certs to resolve SSL certificate issues
-- name: Install pip-system-certs to resolve SSL certificate issues
+- name: Install pip-system-certs
   ansible.builtin.pip:
     name: pip-system-certs
-    executable: /usr/bin/pip3
+    executable: pip3
+  become: true
 
 # Debug: Check certificate trust
 - name: Check if the Vault CA is in the trust store

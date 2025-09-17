@@ -112,7 +112,7 @@
     url: "{{ vault_addr }}/v1/sys/health"
     method: GET
     return_content: true
-    validate_certs: false
+    validate_certs: true
     ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
     status_code: [200, 429, 472, 473, 501, 503]  # Accept various Vault status codes
   register: vault_health
@@ -142,14 +142,16 @@
       - secret_id | length > 0
     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
 
-# Add these environment variables before the certificate generation task
+# Update the SSL environment variables task
 - name: Set SSL environment variables
   ansible.builtin.set_fact:
     vault_ssl_env:
+      VAULT_CACERT: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
       REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
       SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+      PYTHONHTTPSVERIFY: "1"
 
-# Request a TLS certificate from Vault PKI and wrap the response
+# Update the certificate generation task
 - name: Issue certificate from Vault PKI
   community.hashi_vault.vault_pki_generate_certificate:
     url: "{{ vault_addr }}"
@@ -164,6 +166,8 @@
     ttl: "{{ vault_cert_ttl | default('8760h') }}"
   environment: "{{ vault_ssl_env }}"
   register: vault_cert_response
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
 
 - name: Display wrapped token
   debug:

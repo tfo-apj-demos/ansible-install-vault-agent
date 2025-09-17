@@ -142,6 +142,13 @@
       - secret_id | length > 0
     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
 
+# Add these environment variables before the certificate generation task
+- name: Set SSL environment variables
+  ansible.builtin.set_fact:
+    vault_ssl_env:
+      REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+      SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+
 # Request a TLS certificate from Vault PKI and wrap the response
 - name: Issue certificate from Vault PKI
   community.hashi_vault.vault_pki_generate_certificate:
@@ -150,14 +157,12 @@
     engine_mount_point: "{{ vault_pki_path }}"
     common_name: "{{ inventory_hostname }}.{{ domain }}"
     auth_method: approle
-    role_id: "{{ role_id }}" # This is passed in via AAP credentials
-    secret_id: "{{ secret_id }}" # This is passed in via AAP credentials
-    #validate_certs: false
+    role_id: "{{ role_id }}"
+    secret_id: "{{ secret_id }}"
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-    #alt_names: "{{ vault_cert_alt_names | default([]) }}"
-    #ip_sans: "{{ vault_cert_ip_sans | default([]) }}"
-    ttl: "{{ vault_cert_ttl | default('8760h') }}"  # Default 1 year
+    ttl: "{{ vault_cert_ttl | default('8760h') }}"
+  environment: "{{ vault_ssl_env }}"
   register: vault_cert_response
 
 - name: Display wrapped token

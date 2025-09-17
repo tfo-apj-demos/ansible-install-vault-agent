@@ -114,11 +114,17 @@
     return_content: true
     validate_certs: true
     ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-    status_code: [200, 429, 472, 473, 501, 503]  # Accept various Vault status codes
+    status_code: [200, 429, 472, 473, 501, 503]
+    headers:
+      Content-Type: "application/json"
+  environment: "{{ vault_ssl_env }}"
   register: vault_health
   retries: 4
   delay: 5
   timeout: 10
+  become: true
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
 
 - name: Debug response from Vault connectivity test
   debug:

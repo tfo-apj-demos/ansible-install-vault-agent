@@ -78,18 +78,33 @@
   debug:
     msg: "Vault CA trust store: {{ ca_trust_check.stdout }}"
 
-# Check if hvac Python library is installed
+# Check and install hvac Python library
 - name: Check if hvac Python library is installed
   ansible.builtin.command:
     cmd: "/usr/bin/python3 -c 'import hvac'"
   register: hvac_check
-  failed_when: hvac_check.rc != 0
+  ignore_errors: true
   changed_when: false
 
-- name: Fail if hvac library is not installed
-  ansible.builtin.fail:
-    msg: "hvac library is not installed in the Execution Environment."
+- name: Install hvac Python library if not present
+  ansible.builtin.pip:
+    name: hvac
+    executable: pip3
+    state: present
+  become: true
   when: hvac_check.rc != 0
+
+- name: Verify hvac installation
+  ansible.builtin.command:
+    cmd: "/usr/bin/python3 -c 'import hvac'"
+  register: hvac_verify
+  failed_when: hvac_verify.rc != 0
+  changed_when: false
+
+- name: Fail if hvac library installation failed
+  ansible.builtin.fail:
+    msg: "Failed to install hvac library in the Execution Environment."
+  when: hvac_verify.rc != 0
 
 # Test Vault connectivity
 - name: Test Vault connectivity

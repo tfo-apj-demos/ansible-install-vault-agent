@@ -9,11 +9,11 @@
 #     force: true
 #     validate_certs: false  # Only for initial CA download
 #   register: ca_download
-# # Update CA trust store after download
-# - name: Update CA trust store
-#   ansible.builtin.command:
-#     cmd: update-ca-trust
-#   when: ca_download.changed
+ # Update CA trust store after download
+#- name: Update CA trust store
+  #ansible.builtin.command:
+   # cmd: update-ca-trust
+  #when: ca_download.changed
 
 # Ensure Vault CA certificate is installed
 - name: Check if Vault CA certificate exists
@@ -50,21 +50,12 @@
   debug:
     msg: "OpenSSL certificate verification result: {{ openssl_cert_verify.stdout }}"
 
-# Install Python3 and pip if not present
-- name: Install Python3 and pip
-  ansible.builtin.package:
-    name: 
-      - python3
-      - python3-pip
-    state: present
-  become: true
 
 # Install pip-system-certs to resolve SSL certificate issues
-- name: Install pip-system-certs
+- name: Install pip-system-certs to resolve SSL certificate issues
   ansible.builtin.pip:
     name: pip-system-certs
-    executable: pip3
-  become: true
+    executable: /usr/bin/pip3
 
 # Debug: Check certificate trust
 - name: Check if the Vault CA is in the trust store
@@ -77,33 +68,19 @@
   debug:
     msg: "Vault CA trust store: {{ ca_trust_check.stdout }}"
 
-# Check and install hvac Python library
+
+# Check if hvac Python library is installed
 - name: Check if hvac Python library is installed
   ansible.builtin.command:
     cmd: "/usr/bin/python3 -c 'import hvac'"
   register: hvac_check
-  ignore_errors: true
+  failed_when: hvac_check.rc != 0
   changed_when: false
 
-- name: Install hvac Python library if not present
-  ansible.builtin.pip:
-    name: hvac
-    executable: pip3
-    state: present
-  become: true
-  when: hvac_check.rc != 0
-
-- name: Verify hvac installation
-  ansible.builtin.command:
-    cmd: "/usr/bin/python3 -c 'import hvac'"
-  register: hvac_verify
-  failed_when: hvac_verify.rc != 0
-  changed_when: false
-
-- name: Fail if hvac library installation failed
+- name: Fail if hvac library is not installed
   ansible.builtin.fail:
-    msg: "Failed to install hvac library in the Execution Environment."
-  when: hvac_verify.rc != 0
+    msg: "hvac library is not installed in the Execution Environment."
+  when: hvac_check.rc != 0
 
 # # Update the SSL environment variables task
 # - name: Set SSL environment variables

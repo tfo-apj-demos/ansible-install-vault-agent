@@ -1,14 +1,5 @@
 ---
 # roles/vault_tls_auth/tasks/main.yml
-# Download Vault CA certificate from Vault server
-- name: Download Vault CA certificate
-  ansible.builtin.get_url:
-    url: "{{ vault_addr }}/v1/pki/ca/pem"
-    dest: /etc/pki/ca-trust/source/anchors/vault-ca.crt
-    mode: '0644'
-    force: true
-    validate_certs: false  # Only for initial CA download
-  register: ca_download
 
 # Update CA trust store after download
 - name: Update CA trust store

@@ -105,14 +105,14 @@
     msg: "Failed to install hvac library in the Execution Environment."
   when: hvac_verify.rc != 0
 
-# Update the SSL environment variables task
-- name: Set SSL environment variables
-  ansible.builtin.set_fact:
-    vault_ssl_env:
-      VAULT_CACERT: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-      REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-      SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-      PYTHONHTTPSVERIFY: "1"
+# # Update the SSL environment variables task
+# - name: Set SSL environment variables
+#   ansible.builtin.set_fact:
+#     vault_ssl_env:
+#       VAULT_CACERT: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+#       REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+#       SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+#       PYTHONHTTPSVERIFY: "1"
 
 # Test Vault connectivity
 - name: Test Vault connectivity
@@ -125,14 +125,13 @@
     status_code: [200, 429, 472, 473, 501, 503]
     headers:
       Content-Type: "application/json"
-  environment: "{{ vault_ssl_env }}"
+  #environment: "{{ vault_ssl_env }}"
   register: vault_health
   retries: 4
   delay: 5
   timeout: 10
-  become: true
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
+#  vars:
+    #ansible_python_interpreter: /usr/bin/python3
 
 - name: Debug response from Vault connectivity test
   debug:
@@ -169,10 +168,10 @@
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
     ttl: "{{ vault_cert_ttl | default('8760h') }}"
-  environment: "{{ vault_ssl_env }}"
+  #environment: "{{ vault_ssl_env }}"
   register: vault_cert_response
-  vars:
-    ansible_python_interpreter: /usr/bin/python3
+  #vars:
+   # ansible_python_interpreter: /usr/bin/python3
 
 - name: Display wrapped token
   debug:

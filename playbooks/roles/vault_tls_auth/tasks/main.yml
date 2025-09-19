@@ -168,7 +168,7 @@
   community.hashi_vault.vault_login:
     url: "{{ vault_addr }}"
     auth_method: token
-    token: "{{ wrapped_response.wrap_info.token }}"
+    token: "{{ wrapped_response.data.wrap_info.token }}"
     token_unwrap: true
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"

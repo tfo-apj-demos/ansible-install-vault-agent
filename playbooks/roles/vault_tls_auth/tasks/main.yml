@@ -171,21 +171,22 @@
       - wrapped_response.data.wrap_info.token is defined
     fail_msg: "Failed to get a wrapped response from Vault. The 'wrap_info' attribute is missing."
 
-# Unwrap the certificate response using vault_login
-- name: Unwrap certificate response
-  community.hashi_vault.vault_login:
-    url: "{{ vault_addr }}"
-    auth_method: token
-    token: "{{ wrapped_response.wrap_info.token }}"
-    token_unwrap: true
+# Unwrap the certificate response using the uri module
+- name: Unwrap certificate response with uri module
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/wrapping/unwrap"
+    method: POST
+    headers:
+      X-Vault-Token: "{{ wrapped_response.data.wrap_info.token }}"
     validate_certs: true
-    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-  register: vault_cert_response
+    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    status_code: 200
+  register: unwrapped_api_response
 
 # Debug unwrapped response info (optional)
 - name: Debug unwrapped response info
   debug:
-    msg: "Unwrapped data received: {{ vault_cert_response.login.metadata }}"
+    msg: "Unwrapped data received: {{ unwrapped_api_response.json.data }}"
     verbosity: 1
 
 - name: Write certificate files
@@ -197,9 +198,9 @@
 #    - { content: "{{ vault_cert_response.data.data.certificate }}", filename: "cert.pem", mode: "0644" }
 #    - { content: "{{ vault_cert_response.data.data.private_key }}", filename: "key.pem", mode: "0600" }
 #    - { content: "{{ vault_cert_response.data.data.issuing_ca }}", filename: "ca.pem", mode: "0644" }
-    - { content: "{{ vault_cert_response.login.metadata.certificate }}", filename: "cert.pem", mode: "0644" }
-    - { content: "{{ vault_cert_response.login.metadata.private_key }}", filename: "key.pem", mode: "0600" }
-    - { content: "{{ vault_cert_response.login.metadata.issuing_ca }}", filename: "ca.pem", mode: "0644" }
+    - { content: "{{ unwrapped_api_response.json.data.certificate }}", filename: "cert.pem", mode: "0644" }
+    - { content: "{{ unwrapped_api_response.json.data.private_key }}", filename: "key.pem", mode: "0600" }
+    - { content: "{{ unwrapped_api_response.json.data.issuing_ca }}", filename: "ca.pem", mode: "0644" }
   #no_log: true  # Hide sensitive content from logs
   delegate_to: "{{ target_hostname }}"
   become: true

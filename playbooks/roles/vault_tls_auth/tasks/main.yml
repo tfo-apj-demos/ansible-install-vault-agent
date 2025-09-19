@@ -133,22 +133,51 @@
     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
 
 # Update the certificate generation task
-- name: Issue certificate from Vault PKI
-  community.hashi_vault.vault_pki_generate_certificate:
-    url: "{{ vault_addr }}"
-    role_name: "{{ vault_pki_role }}"
-    engine_mount_point: "{{ vault_pki_path }}"
-    common_name: "{{ inventory_hostname }}.{{ domain }}"
+# - name: Issue certificate from Vault PKI
+#   community.hashi_vault.vault_pki_generate_certificate:
+#     url: "{{ vault_addr }}"
+#     role_name: "{{ vault_pki_role }}"
+#     engine_mount_point: "{{ vault_pki_path }}"
+#     common_name: "{{ inventory_hostname }}.{{ domain }}"
+#     auth_method: approle
+#     role_id: "{{ role_id }}"
+#     secret_id: "{{ secret_id }}"
+#     validate_certs: true
+#     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+#     ttl: "{{ vault_cert_ttl | default('720h') }}"
+#   register: vault_cert_response
+
+# Issue certificate with response wrapping
+- name: Issue certificate from Vault PKI with wrapping
+  community.hashi_vault.vault_write:
+    path: "{{ vault_pki_path }}/issue/{{ vault_pki_role }}"
+    data:
+      common_name: "{{ inventory_hostname }}.{{ domain }}"
+      ttl: "{{ vault_cert_ttl | default('720h') }}"
     auth_method: approle
     role_id: "{{ role_id }}"
     secret_id: "{{ secret_id }}"
+    url: "{{ vault_addr }}"
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-    ttl: "{{ vault_cert_ttl | default('720h') }}"
-  #environment: "{{ vault_ssl_env }}"
+    wrap_ttl: "600s"  # 10 minutes
+  register: wrapped_response
+
+# Unwrap the certificate response
+- name: Unwrap certificate response
+  community.hashi_vault.vault_token_lookup:
+    url: "{{ vault_addr }}"
+    token: "{{ wrapped_response.wrap_info.token }}"
+    unwrap: true
+    validate_certs: true
+    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: vault_cert_response
-  #vars:
-   # ansible_python_interpreter: /usr/bin/python3
+
+# Debug wrapped response info (optional)
+- name: Debug wrapped response info
+  debug:
+    msg: "Wrapped token TTL: {{ wrapped_response.wrap_info.ttl }}"
+    verbosity: 1
 
 - name: Write certificate files
   copy:

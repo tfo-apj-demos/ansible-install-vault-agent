@@ -8,8 +8,8 @@ auto_auth {
   method "cert" {
     mount_path = "auth/client-cert-auth"
     config = {
-      cert_file = "{{ cert_dir }}/cert.pem"
-      key_file  = "{{ cert_dir }}/key.pem"
+      cert_file = "/etc/vault.d/cert.pem"
+      key_file  = "/etc/vault.d/key.pem"
       reload = true
 
     }
@@ -17,7 +17,7 @@ auto_auth {
 
   sink "file" {
     config = {
-      path = "/etc/vault-agent/vault-token"
+      path = "/etc/vault.d/vault-token"
     }
   }
 }
@@ -33,16 +33,16 @@ listener "tcp" {
 
 # Certificate renewal configuration
 template {
-  source      = "{{ cert_dir }}/templates/cert-renewal.ctmpl.j2"
-  destination = "{{ cert_dir }}/cert.pem"
+  source      = "/etc/vault.d/templates/cert-renewal.ctmpl.j2"
+  destination = "/etc/vault.d/cert.pem"
   error_on_missing_key = true
   reload_on_change = true
 }
 
 # Private key template
 template {
-  source      = "{{ cert_dir }}/templates/key-renewal.ctmpl.j2"
-  destination = "{{ cert_dir }}/key.pem"
+  source      = "/etc/vault.d/templates/key-renewal.ctmpl.j2"
+  destination = "/etc/vault.d/key.pem"
   error_on_missing_key = true
   reload_on_change = true
   perms       = 0600
@@ -50,8 +50,8 @@ template {
 
 # CA certificate template
 template {
-  source      = "{{ cert_dir }}/templates/ca-renewal.ctmpl.j2"
-  destination = "{{ cert_dir }}/ca.pem"
+  source      = "/etc/vault.d/templates/ca-renewal.ctmpl.j2"
+  destination = "/etc/vault.d/ca.pem"
   error_on_missing_key = true
   reload_on_change = true
 }

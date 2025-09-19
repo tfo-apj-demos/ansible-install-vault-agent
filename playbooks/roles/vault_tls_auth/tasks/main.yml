@@ -163,20 +163,21 @@
     wrap_ttl: "600s"  # 10 minutes
   register: wrapped_response
 
-# Unwrap the certificate response
+# Unwrap the certificate response using vault_login
 - name: Unwrap certificate response
-  community.hashi_vault.vault_token_lookup:
+  community.hashi_vault.vault_login:
     url: "{{ vault_addr }}"
+    auth_method: token
     token: "{{ wrapped_response.wrap_info.token }}"
-    unwrap: true
+    token_unwrap: true
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: vault_cert_response
 
-# Debug wrapped response info (optional)
-- name: Debug wrapped response info
+# Debug unwrapped response info (optional)
+- name: Debug unwrapped response info
   debug:
-    msg: "Wrapped token TTL: {{ wrapped_response.wrap_info.ttl }}"
+    msg: "Unwrapped data received: {{ vault_cert_response.login.metadata }}"
     verbosity: 1
 
 - name: Write certificate files

@@ -163,12 +163,6 @@
     wrap_ttl: "600s"  # 10 minutes
   register: wrapped_response
 
-# Add a debug task to inspect the wrapped response
-- name: Debug wrapped response
-  ansible.builtin.debug:
-    var: wrapped_response
-  failed_when: wrapped_response.wrap_info is not defined
-
 # Unwrap the certificate response using vault_login
 - name: Unwrap certificate response
   community.hashi_vault.vault_login:

@@ -167,8 +167,8 @@
 - name: Verify that response wrapping was successful
   ansible.builtin.assert:
     that:
-      - wrapped_response.wrap_info is defined
-      - wrapped_response.wrap_info.token is defined
+      - wrapped_response.data.wrap_info is defined
+      - wrapped_response.data.wrap_info.token is defined
     fail_msg: "Failed to get a wrapped response from Vault. The 'wrap_info' attribute is missing."
 
 # Unwrap the certificate response using vault_login

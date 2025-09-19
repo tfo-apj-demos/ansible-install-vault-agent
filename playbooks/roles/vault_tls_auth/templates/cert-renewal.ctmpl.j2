@@ -1,4 +1,3 @@
-{{- /* Template for certificate renewal */ -}}
-{{ with secret "pki/issue/{{ vault_pki_role }}" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=720h" }}
+{{ with secret "{{ vault_pki_path }}/{{ vault_pki_role }}" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=720h" }}
 {{ .Data.certificate }}
 {{ end }}

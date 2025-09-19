@@ -144,7 +144,7 @@
     secret_id: "{{ secret_id }}"
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-    ttl: "{{ vault_cert_ttl | default('8760h') }}"
+    ttl: "{{ vault_cert_ttl | default('720h') }}"
   #environment: "{{ vault_ssl_env }}"
   register: vault_cert_response
   #vars:

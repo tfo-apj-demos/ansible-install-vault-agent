@@ -163,12 +163,20 @@
     wrap_ttl: "600s"  # 10 minutes
   register: wrapped_response
 
+# Add a debug task to inspect the wrapped response and fail if wrapping failed
+- name: Verify that response wrapping was successful
+  ansible.builtin.assert:
+    that:
+      - wrapped_response.wrap_info is defined
+      - wrapped_response.wrap_info.token is defined
+    fail_msg: "Failed to get a wrapped response from Vault. The 'wrap_info' attribute is missing."
+
 # Unwrap the certificate response using vault_login
 - name: Unwrap certificate response
   community.hashi_vault.vault_login:
     url: "{{ vault_addr }}"
     auth_method: token
-    token: "{{ wrapped_response.data.wrap_info.token }}"
+    token: "{{ wrapped_response.wrap_info.token }}"
     token_unwrap: true
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"

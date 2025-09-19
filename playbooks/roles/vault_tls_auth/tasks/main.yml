@@ -156,9 +156,9 @@
     dest: "{{ cert_dir | default('/etc/ssl/private') }}/{{ item.filename }}"
     mode: "{{ item.mode }}"
   loop:
-    - { content: "{{ vault_cert_response.data.certificate }}", filename: "cert.pem", mode: "0644" }
-    - { content: "{{ vault_cert_response.data.private_key }}", filename: "key.pem", mode: "0600" }
-    - { content: "{{ vault_cert_response.data.issuing_ca }}", filename: "ca.pem", mode: "0644" }
+    - { content: "{{ vault_cert_response.data.data.certificate }}", filename: "cert.pem", mode: "0644" }
+    - { content: "{{ vault_cert_response.data.data.private_key }}", filename: "key.pem", mode: "0600" }
+    - { content: "{{ vault_cert_response.data.data.issuing_ca }}", filename: "ca.pem", mode: "0644" }
   #no_log: true  # Hide sensitive content from logs
   delegate_to: "{{ target_hostname }}"
 

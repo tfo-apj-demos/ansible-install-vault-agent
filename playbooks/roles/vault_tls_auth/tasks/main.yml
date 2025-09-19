@@ -161,6 +161,7 @@
     - { content: "{{ vault_cert_response.data.data.issuing_ca }}", filename: "ca.pem", mode: "0644" }
   #no_log: true  # Hide sensitive content from logs
   delegate_to: "{{ target_hostname }}"
+  become: true
 
 - name: Create template directory for certificate renewal
   file:
@@ -168,6 +169,7 @@
     state: directory
     mode: '0750'
   delegate_to: "{{ target_hostname }}"
+  become: true
 
 - name: Deploy certificate renewal template
   template:
@@ -175,6 +177,7 @@
     dest: "{{ cert_dir }}/templates/cert-renewal.ctmpl"
     mode: '0640'
   delegate_to: "{{ target_hostname }}"
+  become: true
 
 # Need to clobber the existing Vault Agent Configuration to use new TLS Auth
 - name: Deploy Vault Agent configuration
@@ -185,3 +188,4 @@
   notify:
     - restart vault-agent
   delegate_to: "{{ target_hostname }}"
+  become: true

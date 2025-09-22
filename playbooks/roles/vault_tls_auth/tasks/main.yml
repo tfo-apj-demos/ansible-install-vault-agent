@@ -221,6 +221,22 @@
   delegate_to: "{{ target_hostname }}"
   become: true
 
+- name: Deploy key renewal template
+  template:
+    src: key-renewal.ctmpl.j2
+    dest: "{{ cert_dir }}/templates/key-renewal.ctmpl.j2"
+    mode: '0640'
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
+- name: Deploy ca renewal template
+  template:
+    src: ca-renewal.ctmpl.j2
+    dest: "{{ cert_dir }}/templates/ca-renewal.ctmpl.j2"
+    mode: '0640'
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
 # Need to clobber the existing Vault Agent Configuration to use new TLS Auth
 - name: Deploy Vault Agent configuration
   template:

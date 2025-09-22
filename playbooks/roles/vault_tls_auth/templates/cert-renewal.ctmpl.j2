@@ -1,6 +1,4 @@
-{% raw %}
-{{- /* Template for certificate renewal */ -}}
-{{ with secret "{{ vault_pki_path }}/issue/{{ vault_pki_role }}" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=720h" }}
-{{ .Data.certificate }}
-{{ end }}
-{% endraw %}
+{% raw %}{{- /* Template for certificate renewal */ -}}
+{{ with secret "{% endraw %}{{ vault_pki_path }}{% raw %}/issue/{% endraw %}{{ vault_pki_role }}{% raw %}" "common_name={% endraw %}{{ inventory_hostname }}{% raw %}.{% endraw %}{{ domain }}{% raw %}" "ttl=720h" }}{% endraw %}
+{{`{{ .Data.certificate }}`}}
+{% raw %}{{ end }}{% endraw %}

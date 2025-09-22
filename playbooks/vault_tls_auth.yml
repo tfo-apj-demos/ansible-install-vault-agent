@@ -5,7 +5,7 @@
   vars:
     vault_addr: "https://vault.hashicorp.local:8200"
     vault_pki_role: "gcve"
-    target_hostname: "{{ hostvars['web-server-01']['inventory_hostname'] }}"
+    target_hostname: "{{ hostvars['database-server-01']['inventory_hostname'] }}"
     domain: "hashicorp.local"  # Replace with the actual domain
   roles:
     - vault_tls_auth

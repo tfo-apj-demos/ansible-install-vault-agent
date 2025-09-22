@@ -1,4 +1,4 @@
 {% raw %}{{- /* Template for CA certificate renewal */ -}}
 {{ with secret "{% endraw %}{{ vault_pki_path }}{% raw %}/issue/{% endraw %}{{ vault_pki_role }}{% raw %}" "common_name={% endraw %}{{ inventory_hostname }}{% raw %}.{% endraw %}{{ domain }}{% raw %}" "ttl=720h" }}{% endraw %}
-{{ .Data.issuing_ca }}
+{{ Data.issuing_ca }}
 {% raw %}{{ end }}{% endraw %}

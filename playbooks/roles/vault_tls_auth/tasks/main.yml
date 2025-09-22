@@ -216,7 +216,7 @@
 - name: Deploy certificate renewal template
   template:
     src: cert-renewal.ctmpl.j2
-    dest: "{{ cert_dir }}/templates/cert-renewal.ctmpl"
+    dest: "{{ cert_dir }}/templates/cert-renewal.ctmpl.j2"
     mode: '0640'
   delegate_to: "{{ target_hostname }}"
   become: true

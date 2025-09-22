@@ -36,7 +36,6 @@ template {
   source      = "/etc/vault.d/templates/cert-renewal.ctmpl.j2"
   destination = "/etc/vault.d/cert.pem"
   error_on_missing_key = true
-  reload_on_change = true
 }
 
 # Private key template
@@ -44,7 +43,6 @@ template {
   source      = "/etc/vault.d/templates/key-renewal.ctmpl.j2"
   destination = "/etc/vault.d/key.pem"
   error_on_missing_key = true
-  reload_on_change = true
   perms       = 0600
 }
 
@@ -53,5 +51,4 @@ template {
   source      = "/etc/vault.d/templates/ca-renewal.ctmpl.j2"
   destination = "/etc/vault.d/ca.pem"
   error_on_missing_key = true
-  reload_on_change = true
 }

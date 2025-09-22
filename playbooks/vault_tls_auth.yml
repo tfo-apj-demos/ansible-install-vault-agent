@@ -1,7 +1,7 @@
 ---
 - name: Bootstrap Vault Agent with TLS support
   hosts: localhost
-  gather_facts: false
+  gather_facts: true
   vars:
     vault_addr: "https://vault.hashicorp.local:8200"
     vault_pki_role: "gcve"

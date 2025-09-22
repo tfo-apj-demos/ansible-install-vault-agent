@@ -152,7 +152,7 @@
   community.hashi_vault.vault_write:
     path: "{{ vault_pki_path }}/issue/{{ vault_pki_role }}"
     data:
-      common_name: "{{ inventory_hostname }}.{{ domain }}"
+      common_name: "{{ ansible_hostname }}.{{ domain }}"
       ttl: "{{ vault_cert_ttl | default('720h') }}"
     auth_method: approle
     role_id: "{{ role_id }}"

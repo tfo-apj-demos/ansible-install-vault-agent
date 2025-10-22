@@ -69,6 +69,9 @@
         src: "cert-renewal.ctmpl.j2"
         dest: "/etc/vault.d/templates/cert-renewal.ctmpl"
         mode: "0644"
+      vars:
+        vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
+        vault_pki_role: "{{ vault_pki_role_name | default('gcve') }}"
 
     - name: Deploy private key renewal template (references TPM key)
       template:
@@ -81,6 +84,9 @@
         src: "ca-renewal.ctmpl.j2" 
         dest: "/etc/vault.d/templates/ca-renewal.ctmpl"
         mode: "0644"
+      vars:
+        vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
+        vault_pki_role: "{{ vault_pki_role_name | default('gcve') }}"
 
     # Deploy TLS-based Vault Agent configuration
     - name: Deploy Vault Agent TLS configuration

@@ -1,0 +1,53 @@
+pid_file = "/var/run/vault-agent.pid"
+
+vault {
+  address = "{{ vault_addr | default('https://vault.hashicorp.local:8200') }}"
+  {% if vault_tls_skip_verify | default(false) %}
+  tls_skip_verify = true
+  {% endif %}
+}
+
+auto_auth {
+  method "cert" {
+    config = {
+      client_cert = "/etc/vault.d/cert.pem"
+      client_key  = "/etc/vault.d/tpm-private-key.pem"
+      reload      = true
+    }
+  }
+
+  sink "file" {
+    config = {
+      path = "/etc/vault.d/vault-token"
+    }
+  }
+}
+
+cache {
+  use_auto_auth_token = true
+}
+
+listener "tcp" {
+  address     = "127.0.0.1:8201"
+  tls_disable = true
+}
+
+# Certificate renewal template - only renews the certificate, not the private key
+template {
+  source      = "/etc/vault.d/templates/cert-renewal.ctmpl"
+  destination = "/etc/vault.d/cert.pem"
+  error_on_missing_key = true
+  
+  # Restart Vault Agent when certificate is renewed
+  exec {
+    command = ["/bin/systemctl", "reload", "vault-agent"]
+    timeout = "30s"
+  }
+}
+
+# CA certificate renewal template  
+template {
+  source      = "/etc/vault.d/templates/ca-renewal.ctmpl"
+  destination = "/etc/vault.d/ca.pem"
+  error_on_missing_key = true
+}

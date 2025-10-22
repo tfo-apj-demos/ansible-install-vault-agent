@@ -1,0 +1,36 @@
+---
+# Complete end-to-end Vault Agent setup with TPM and TLS authentication
+- name: Install and configure Vault Agent with TPM-based TLS auth
+  hosts: all
+  become: true
+  gather_facts: false
+  roles:
+    # Step 1: Install Vault Agent binary and basic setup
+    - vault_agent
+    
+    # Step 2: Configure TPM and generate CSR  
+    - vault_tpm
+
+- name: Sign CSR via Vault using Execution Environment
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vault_addr: "https://vault.hashicorp.local:8200"
+    vault_pki_path: "pki"
+    vault_pki_role: "gcve"
+    target_hostname: "{{ hostvars[groups['all'][0]]['inventory_hostname'] }}"
+    remote_csr_data: "{{ hostvars[groups['all'][0]].remote_csr_data_fact }}"
+    domain: "hashicorp.local"
+    cert_dir: "/etc/ssl/private"
+  roles:
+    # Step 3: Sign CSR and get certificate from Vault
+    - vault_sign
+
+- name: Configure Vault Agent for TLS authentication
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    # Step 4: Set up TLS-based Vault Agent configuration
+    - include_tasks: roles/vault_agent/tasks/tls_setup.yml
+    

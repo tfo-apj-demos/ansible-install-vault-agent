@@ -1,0 +1,3 @@
+{{ with pkiCert "pki/issue/gcve" "common_name=database-server-01.hashicorp.local" "ttl=24h"}}
+{{ .CA }}
+{{ end }}

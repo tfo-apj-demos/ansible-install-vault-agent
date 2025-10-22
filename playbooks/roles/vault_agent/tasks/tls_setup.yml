@@ -1,0 +1,106 @@
+---
+# This task file bridges the gap between TPM setup and TLS auth
+# It assumes TPM has already generated a private key and CSR has been signed
+
+- name: Wait for SSH connection to become available
+  ansible.builtin.wait_for_connection:
+    delay: 30
+    timeout: 180
+    sleep: 15
+  register: connection_wait
+  ignore_errors: true
+
+- name: Check connection status
+  debug:
+    msg: "Host is reachable"
+  when: connection_wait is succeeded
+
+- name: Gather facts manually
+  ansible.builtin.setup:
+  when: connection_wait is succeeded
+
+- block:
+    # Extract private key from TPM to filesystem for Vault Agent
+    - name: Extract private key from TPM handle to filesystem
+      shell: |
+        openssl pkey \
+          -provider tpm2 -provider default \
+          -propquery '?provider=tpm2' \
+          -in handle:0x81000000 -inform tpm2 \
+          -out /etc/vault.d/tpm-private-key.pem
+      args:
+        creates: /etc/vault.d/tpm-private-key.pem
+
+    - name: Set proper permissions on TPM private key
+      file:
+        path: /etc/vault.d/tpm-private-key.pem
+        mode: "0600"
+        owner: root
+        group: root
+
+    # Copy the signed certificate from where vault_sign role placed it
+    - name: Check if signed certificate exists from vault_sign role
+      stat:
+        path: "{{ cert_dir | default('/etc/ssl/private') }}/cert.pem"
+      register: signed_cert_stat
+
+    - name: Copy signed certificate to Vault Agent directory
+      copy:
+        src: "{{ cert_dir | default('/etc/ssl/private') }}/cert.pem" 
+        dest: /etc/vault.d/cert.pem
+        mode: "0644"
+        remote_src: yes
+      when: signed_cert_stat.stat.exists
+
+    - name: Copy CA certificate to Vault Agent directory
+      copy:
+        src: "{{ cert_dir | default('/etc/ssl/private') }}/ca.pem"
+        dest: /etc/vault.d/ca.pem
+        mode: "0644"
+        remote_src: yes
+      when: signed_cert_stat.stat.exists
+
+    # Create certificate renewal templates
+    - name: Create templates directory
+      file:
+        path: /etc/vault.d/templates
+        state: directory
+        mode: "0755"
+
+    - name: Deploy certificate renewal template
+      template:
+        src: "cert-renewal.ctmpl.j2"
+        dest: "/etc/vault.d/templates/cert-renewal.ctmpl"
+        mode: "0644"
+
+    - name: Deploy private key renewal template (references TPM key)
+      template:
+        src: "key-renewal.ctmpl.j2"
+        dest: "/etc/vault.d/templates/key-renewal.ctmpl"
+        mode: "0644"
+
+    - name: Deploy CA renewal template
+      template:
+        src: "ca-renewal.ctmpl.j2" 
+        dest: "/etc/vault.d/templates/ca-renewal.ctmpl"
+        mode: "0644"
+
+    # Deploy TLS-based Vault Agent configuration
+    - name: Deploy Vault Agent TLS configuration
+      template:
+        src: "vault-agent-tls-config.hcl.j2"
+        dest: "{{ vault_agent_config_file }}"
+        backup: yes
+
+    - name: Reload systemd and restart Vault Agent service
+      systemd:
+        name: vault-agent
+        daemon_reload: yes
+        enabled: yes
+        state: restarted
+
+  when: connection_wait is succeeded
+  rescue:
+    - name: Log unreachable host
+      debug:
+        msg: "Host is unreachable after waiting. Skipping TLS setup."

@@ -36,11 +36,7 @@
 # Generate CSR using the private key
 - name: Generate CSR using private key
   ansible.builtin.command:
-    cmd: |
-      openssl req -new \
-        -key /root/vault-keys/private-key.pem \
-        -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
-        -out /root/vault-keys/csr.pem
+    cmd: openssl req -new -key /root/vault-keys/private-key.pem -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" -out /root/vault-keys/csr.pem
     creates: /root/vault-keys/csr.pem
 
 # Ensure CSR was created successfully

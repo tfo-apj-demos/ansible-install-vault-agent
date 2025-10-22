@@ -62,13 +62,13 @@
 
 # Generate CSR using TPM key
 - name: Generate CSR using TPM key
-  ansible.builtin.shell: |
-    openssl req -new \
-      -provider tpm2 -provider default \
-      -propquery '?provider=tpm2' \
-      -key handle:0x81000000 -keyform tpm2 \
-      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
-      -out '/root/tpm_csr.pem'
+  ansible.builtin.shell: >
+    openssl req -new
+    -provider tpm2 -provider default
+    -propquery '?provider=tpm2'
+    -key handle:0x81000000 -keyform tpm2
+    -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+    -out '/root/tpm_csr.pem'
   args:
     creates: /root/tpm_csr.pem
 

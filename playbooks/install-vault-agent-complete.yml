@@ -10,7 +10,7 @@
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     domain: "{{ target_domain | default('hashicorp.local') }}"
   roles:
-    # Step 1: Configure TPM and generate CSR  
+    # Step 1: Configure TPM and generate CSR
     - vault_tpm
 
 - name: Sign CSR via Vault using Execution Environment

@@ -17,60 +17,66 @@
   when: connection_wait is succeeded
 
 - block:
+    # Install Vault binary (always needed)
     - name: Ensure dependencies are installed
-      package:
+      ansible.builtin.package:
         name: "{{ item }}"
         state: present
       loop:
         - curl
         - unzip
+      when: vault_agent_install_binary | default(true)
 
     - name: Download Vault binary
-      get_url:
+      ansible.builtin.get_url:
         url: "https://releases.hashicorp.com/vault/{{ vault_version }}/vault_{{ vault_version }}_linux_amd64.zip"
         dest: "/tmp/vault_{{ vault_version }}.zip"
+      when: vault_agent_install_binary | default(true)
 
     - name: Extract Vault binary
-      unarchive:
+      ansible.builtin.unarchive:
         src: "/tmp/vault_{{ vault_version }}.zip"
         dest: "/usr/local/bin/"
-        remote_src: yes
+        remote_src: true
+      when: vault_agent_install_binary | default(true)
 
     - name: Ensure Vault binary is executable
-      file:
+      ansible.builtin.file:
         path: "{{ vault_bin_path }}"
         mode: "0755"
         state: file
+      when: vault_agent_install_binary | default(true)
 
     - name: Create Vault Agent config directory
-      file:
+      ansible.builtin.file:
         path: "{{ vault_config_dir }}"
         state: directory
-        mode: "0775"  # Ensures the directory is writable by the owner and group
-        owner: root    # Adjust ownership if necessary
-        group: root    # Adjust group if necessary
+        mode: "0775"
+        owner: root
+        group: root
 
-    # Include TLS setup if requested
+    # Configure based on TLS or basic setup
     - name: Include TLS setup tasks
-      include_tasks: tls_setup.yml
+      ansible.builtin.include_tasks: tls_setup.yml
       when: vault_agent_setup_tls | default(false)
 
     - name: Deploy Vault Agent configuration (basic)
-      template:
+      ansible.builtin.template:
         src: "vault-agent-config.hcl.j2"
         dest: "{{ vault_agent_config_file }}"
       when: not (vault_agent_setup_tls | default(false))
 
     - name: Deploy systemd service for Vault Agent
-      template:
+      ansible.builtin.template:
         src: "vault-agent.service.j2"
         dest: "{{ vault_service_file }}"
 
+    # Start service (TLS setup handles restart if needed)
     - name: Reload systemd and enable Vault Agent service
-      systemd:
+      ansible.builtin.systemd:
         name: vault-agent
-        daemon_reload: yes
-        enabled: yes
+        daemon_reload: true
+        enabled: true
         state: started
       when: not (vault_agent_setup_tls | default(false))
   when: connection_wait is succeeded

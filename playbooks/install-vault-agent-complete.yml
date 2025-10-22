@@ -1,6 +1,6 @@
 ---
 # Complete end-to-end Vault Agent setup with TPM and TLS authentication
-- name: Install and configure Vault Agent with TPM-based TLS auth
+- name: Generate TPM key and CSR
   hosts: all
   become: true
   gather_facts: false
@@ -10,10 +10,7 @@
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     domain: "{{ target_domain | default('hashicorp.local') }}"
   roles:
-    # Step 1: Install Vault Agent binary and basic setup
-    - vault_agent
-    
-    # Step 2: Configure TPM and generate CSR  
+    # Step 1: Configure TPM and generate CSR  
     - vault_tpm
 
 - name: Sign CSR via Vault using Execution Environment
@@ -28,15 +25,19 @@
     domain: "{{ target_domain | default('hashicorp.local') }}"
     cert_dir: "/etc/ssl/private"
   roles:
-    # Step 3: Sign CSR and get certificate from Vault
+    # Step 2: Sign CSR and get certificate from Vault
     - vault_sign
 
-- name: Configure Vault Agent for TLS authentication
+- name: Install and configure Vault Agent with TLS authentication
   hosts: all
   become: true
   gather_facts: false
   vars:
+    # Tell vault_agent role to install AND configure TLS
+    vault_agent_install_binary: true
     vault_agent_setup_tls: true
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
   roles:
-    # Step 4: Set up TLS-based Vault Agent configuration  
+    # Step 3: Install Vault Agent and configure with TLS (single run)
     - vault_agent

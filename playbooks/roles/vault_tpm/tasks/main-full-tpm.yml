@@ -22,7 +22,7 @@
   ansible.builtin.user:
     name: "{{ ansible_user }}"
     groups: tss
-    append: yes
+    append: true
 
 # Add TPM2 provider config to OpenSSL
 - name: Add TPM2 provider config to OpenSSL

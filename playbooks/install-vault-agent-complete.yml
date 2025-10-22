@@ -32,4 +32,5 @@
   gather_facts: false
   tasks:
     # Step 4: Set up TLS-based Vault Agent configuration
-    - include_tasks: roles/vault_agent/tasks/tls_setup.yml
+    - name: Set up TLS-based Vault Agent configuration
+      ansible.builtin.include_tasks: roles/vault_agent/tasks/tls_setup.yml

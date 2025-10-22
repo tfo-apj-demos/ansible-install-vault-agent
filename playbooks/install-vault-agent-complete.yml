@@ -19,7 +19,7 @@
     vault_pki_path: "pki"
     vault_pki_role: "gcve"
     target_hostname: "{{ hostvars[groups['all'][0]]['inventory_hostname'] }}"
-    remote_csr_data: "{{ hostvars[groups['all'][0]].remote_csr_data_fact }}"
+    remote_csr_data: "{{ hostvars[groups['all'][0]].vault_tpm_remote_csr_data_fact }}"
     domain: "hashicorp.local"
     cert_dir: "/etc/ssl/private"
   roles:
@@ -33,4 +33,3 @@
   tasks:
     # Step 4: Set up TLS-based Vault Agent configuration
     - include_tasks: roles/vault_agent/tasks/tls_setup.yml
-    

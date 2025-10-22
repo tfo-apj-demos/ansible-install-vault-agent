@@ -1,7 +1,5 @@
 ---
-# TPM Task Switcher
-# This file determines which TPM approach to use based on variables
-
+# Switch between TPM implementations based on variable
 - name: Use simplified key generation (recommended for demo)
   include_tasks: main-simplified.yml
   when: vault_tpm_simplified | default(true)

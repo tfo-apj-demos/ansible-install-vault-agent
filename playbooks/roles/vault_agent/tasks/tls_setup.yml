@@ -20,25 +20,22 @@
   when: connection_wait is succeeded
 
 - block:
-    # Extract private key from TPM to filesystem for Vault Agent
-    - name: Extract private key from TPM handle to filesystem
-      shell: |
-        openssl pkey \
-          -provider tpm2 -provider default \
-          -propquery '?provider=tpm2' \
-          -in handle:0x81000000 -inform tpm2 \
-          -out /etc/vault.d/tpm-private-key.pem
-      args:
-        creates: /etc/vault.d/tpm-private-key.pem
+    # Copy the generated private key to Vault Agent directory
+    # Copy private key from where vault_tpm role created it
+    - name: Check if private key exists from vault_tpm role
+      stat:
+        path: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/root/vault-keys/private-key.pem') }}"
+      register: private_key_stat
 
-    - name: Set proper permissions on TPM private key
-      file:
-        path: /etc/vault.d/tpm-private-key.pem
+    - name: Copy private key to Vault Agent directory
+      copy:
+        src: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/root/vault-keys/private-key.pem') }}"
+        dest: /etc/vault.d/tpm-private-key.pem
         mode: "0600"
         owner: root
         group: root
-
-    # Copy the signed certificate from where vault_sign role placed it
+        remote_src: yes
+      when: private_key_stat.stat.exists    # Copy the signed certificate from where vault_sign role placed it
     - name: Check if signed certificate exists from vault_sign role
       stat:
         path: "{{ cert_dir | default('/etc/ssl/private') }}/cert.pem"

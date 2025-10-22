@@ -1,9 +1,99 @@
 ---
-# Switch between TPM implementations based on variable
-- name: Use simplified key generation (recommended for demo)
-  ansible.builtin.include_tasks: main-simplified.yml
-  when: vault_tpm_simplified | default(true)
+# roles/vault_tpm/tasks/main-full-tpm.yml - Full TPM integration
+# Ensure TPM and Vault dependencies are installed on the remote VM
+- name: Enable EPEL repository for TPM tools
+  ansible.builtin.package:
+    name: epel-release
+    state: present
+  when: ansible_os_family == "RedHat"
 
-- name: Use full TPM integration
-  ansible.builtin.include_tasks: main-full-tpm.yml
-  when: not (vault_tpm_simplified | default(true))
+- name: Ensure TPM and Vault dependencies are installed
+  ansible.builtin.package:
+    name:
+      - tpm2-tools
+      - tpm2-tss
+      - openssl
+      - unzip
+      - curl
+    state: present
+
+# Add ansible user to tss group (needed for TPM access)
+- name: Add ansible user to tss group
+  ansible.builtin.user:
+    name: "{{ ansible_user }}"
+    groups: tss
+    append: yes
+
+# Add TPM2 provider config to OpenSSL
+- name: Add TPM2 provider config to OpenSSL
+  ansible.builtin.blockinfile:
+    path: /etc/ssl/openssl.cnf
+    block: |
+      [openssl_init]
+      providers = provider_sect
+
+      [provider_sect]
+      default = default_sect
+      tpm2 = tpm2_sect
+
+      [tpm2_sect]
+      module = /usr/lib64/ossl-modules/tpm2.so
+    marker: "# {mark} TPM2 Provider Setup"
+
+# Create TPM2 primary key context
+- name: Create TPM2 primary key context
+  ansible.builtin.command: tpm2_createprimary -C o -g sha256 -G rsa -c /root/primary.ctx
+  args:
+    creates: /root/primary.ctx
+
+# Create TPM2 keypair
+- name: Create TPM2 keypair
+  ansible.builtin.command: tpm2_create -C /root/primary.ctx -g sha256 -G rsa -u /root/key.pub -r /root/key.priv
+  args:
+    creates: /root/key.pub
+
+# Load and persist TPM2 key
+- name: Load and persist TPM2 key
+  ansible.builtin.shell: |
+    tpm2_load -C /root/primary.ctx -u /root/key.pub -r /root/key.priv -c /root/key.ctx
+    tpm2_evictcontrol -C o -c /root/key.ctx 0x81000000
+  args:
+    creates: /root/key.ctx
+
+# Generate CSR using TPM key
+- name: Generate CSR using TPM key
+  ansible.builtin.shell: |
+    openssl req -new \
+      -provider tpm2 -provider default \
+      -propquery '?provider=tpm2' \
+      -key handle:0x81000000 -keyform tpm2 \
+      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
+      -out '/root/tpm_csr.pem'
+  args:
+    creates: /root/tpm_csr.pem
+
+# Ensure CSR was created successfully
+- name: Check if tpm_csr.pem exists
+  ansible.builtin.stat:
+    path: /root/tpm_csr.pem
+  register: vault_tpm_csr_stat
+  failed_when: not vault_tpm_csr_stat.stat.exists
+  changed_when: false
+
+# Slurp CSR content from remote host
+- name: Slurp CSR content from remote host
+  ansible.builtin.slurp:
+    src: /root/tpm_csr.pem
+  register: vault_tpm_remote_csr_data
+
+# Fail if CSR could not be read from remote host
+- name: Fail if CSR could not be read from remote host
+  ansible.builtin.fail:
+    msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."
+  when: vault_tpm_remote_csr_data.content is not defined or vault_tpm_remote_csr_data.content | length == 0
+
+# Set a custom fact to pass the CSR data to the next role
+- name: Set remote CSR data as a fact
+  ansible.builtin.set_fact:
+    vault_tpm_remote_csr_data_fact: "{{ vault_tpm_remote_csr_data }}"
+    vault_tpm_private_key_path: "handle:0x81000000"  # TPM handle reference

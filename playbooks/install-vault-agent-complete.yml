@@ -39,8 +39,8 @@
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     domain: "{{ target_domain | default('hashicorp.local') }}"
     # PKI variables for certificate renewal templates
-    vault_pki_mount_path: "{{ vault_pki_mount_path | default('pki') }}"
-    vault_pki_role_name: "{{ vault_pki_role_name | default('gcve') }}"
+    vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
+    vault_pki_role: "{{ vault_pki_role_name | default('gcve') }}"
     cert_dir: "/etc/ssl/private"
   roles:
     # Step 3: Install Vault Agent and configure with TLS (single run)

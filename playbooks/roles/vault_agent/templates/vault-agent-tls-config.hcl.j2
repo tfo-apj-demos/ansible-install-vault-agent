@@ -32,22 +32,16 @@ listener "tcp" {
   tls_disable = true
 }
 
-# Certificate renewal template - only renews the certificate, not the private key
+# Application certificate template - renders NEW PKI cert for your application
 template {
   source      = "/etc/vault.d/templates/cert-renewal.ctmpl"
-  destination = "/etc/vault.d/cert.pem"
+  destination = "/etc/vault.d/app-cert.pem"
   error_on_missing_key = true
-  
-  # Restart Vault Agent when certificate is renewed
-  exec {
-    command = ["/bin/systemctl", "reload", "vault-agent"]
-    timeout = "30s"
-  }
 }
 
 # CA certificate renewal template  
 template {
   source      = "/etc/vault.d/templates/ca-renewal.ctmpl"
-  destination = "/etc/vault.d/ca.pem"
+  destination = "/etc/vault.d/app-ca.pem"
   error_on_missing_key = true
 }

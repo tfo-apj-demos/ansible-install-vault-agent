@@ -70,6 +70,12 @@
         dest: "/etc/vault.d/templates/cert-renewal.ctmpl"
         mode: "0644"
 
+    - name: Deploy application key renewal template
+      template:
+        src: "app-key-renewal.ctmpl.j2"
+        dest: "/etc/vault.d/templates/app-key-renewal.ctmpl"
+        mode: "0644"
+
     - name: Deploy private key renewal template (references TPM key)
       template:
         src: "key-renewal.ctmpl.j2"

@@ -39,6 +39,14 @@ template {
   error_on_missing_key = true
 }
 
+# Application private key template - renders the private key for the app cert
+template {
+  source      = "/etc/vault.d/templates/app-key-renewal.ctmpl"
+  destination = "/etc/vault.d/app-key.pem"
+  error_on_missing_key = true
+  perms       = "0600"
+}
+
 # CA certificate renewal template  
 template {
   source      = "/etc/vault.d/templates/ca-renewal.ctmpl"

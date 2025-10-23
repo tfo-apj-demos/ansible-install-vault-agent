@@ -1,0 +1,3 @@
+{% raw %}{{ with pkiCert "{% endraw %}{{ vault_pki_path | default('pki') }}/issue/{{ vault_pki_role | default('gcve') }}{% raw %}" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}{% raw %}" "ttl=24h"}}
+{{ .Key }}
+{{ end }}{% endraw %}

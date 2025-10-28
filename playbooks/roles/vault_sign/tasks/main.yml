@@ -125,6 +125,16 @@
     msg: "{{ signed_cert.data.data.certificate }}"
 
 # Copy the signed certificate back to the target machine
+- name: Ensure Vault config directory exists on target machine
+  ansible.builtin.file:
+    path: "/etc/vault.d"
+    state: directory
+    mode: "0775"
+    owner: root
+    group: root
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
 - name: Copy signed certificate back to the target machine
   ansible.builtin.copy:
     content: "{{ signed_cert.data.data.certificate }}"

@@ -55,6 +55,17 @@
         owner: root
         group: root
 
+    # Deploy systemd service FIRST (before any config)
+    - name: Deploy systemd service for Vault Agent
+      ansible.builtin.template:
+        src: "vault-agent.service.j2"
+        dest: "{{ vault_service_file }}"
+
+    # Reload systemd so the service is available
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+
     # Configure based on TLS or basic setup
     - name: Include TLS setup tasks
       ansible.builtin.include_tasks: tls_setup.yml
@@ -66,21 +77,15 @@
         dest: "{{ vault_agent_config_file }}"
       when: not (vault_agent_setup_tls | default(false))
 
-    - name: Deploy systemd service for Vault Agent
-      ansible.builtin.template:
-        src: "vault-agent.service.j2"
-        dest: "{{ vault_service_file }}"
-
-    # Start service (TLS setup handles restart if needed)
-    - name: Reload systemd and enable Vault Agent service
+    # Start service (only for non-TLS setup, TLS setup handles its own restart)
+    - name: Enable and start Vault Agent service (basic mode)
       ansible.builtin.systemd:
         name: vault-agent
-        daemon_reload: true
         enabled: true
         state: started
       when: not (vault_agent_setup_tls | default(false))
   when: connection_wait is succeeded
   rescue:
-    - name: Log unreachable host
+    - name: Log vault agent installation failure
       debug:
-        msg: "Host is unreachable after waiting. Skipping Vault Agent configuration."
+        msg: "Vault Agent installation/configuration failed. Check previous task errors for details."

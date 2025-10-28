@@ -104,6 +104,6 @@
 
   when: connection_wait is succeeded
   rescue:
-    - name: Log unreachable host
+    - name: Log TLS setup failure
       debug:
-        msg: "Host is unreachable after waiting. Skipping TLS setup."
+        msg: "TLS setup failed. This could be due to missing certificates, systemd issues, or connection problems. Check previous task errors for details."

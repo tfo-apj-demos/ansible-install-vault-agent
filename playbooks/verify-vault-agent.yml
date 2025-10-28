@@ -1,0 +1,104 @@
+---
+# Verification playbook to check Vault Agent status and configuration
+- name: Verify Vault Agent Installation and Status
+  hosts: all
+  become: true
+  gather_facts: true
+  
+  tasks:
+    - name: Check if Vault binary exists
+      ansible.builtin.stat:
+        path: /usr/local/bin/vault
+      register: vault_binary
+      
+    - name: Verify Vault binary is executable
+      ansible.builtin.command: /usr/local/bin/vault version
+      register: vault_version
+      changed_when: false
+      when: vault_binary.stat.exists
+      
+    - name: Display Vault version
+      debug:
+        msg: "Vault version: {{ vault_version.stdout }}"
+      when: vault_version is defined and vault_version.rc == 0
+      
+    - name: Check if Vault Agent config exists
+      ansible.builtin.stat:
+        path: /etc/vault.d/vault-agent.hcl
+      register: agent_config
+      
+    - name: Check if systemd service file exists
+      ansible.builtin.stat:
+        path: /etc/systemd/system/vault-agent.service
+      register: service_file
+      
+    - name: Check Vault Agent service status
+      ansible.builtin.systemd:
+        name: vault-agent
+      register: agent_service
+      failed_when: false
+      
+    - name: Display service status
+      debug:
+        msg: |
+          Service Name: vault-agent
+          Loaded: {{ agent_service.status.LoadState | default('Unknown') }}
+          Active: {{ agent_service.status.ActiveState | default('Unknown') }}
+          Running: {{ agent_service.status.SubState | default('Unknown') }}
+      when: agent_service.status is defined
+      
+    - name: Check if authentication certificate exists
+      ansible.builtin.stat:
+        path: /etc/vault.d/cert.pem
+      register: auth_cert
+      
+    - name: Check if authentication key exists
+      ansible.builtin.stat:
+        path: /etc/vault.d/tpm-private-key.pem
+      register: auth_key
+      
+    - name: Display certificate details
+      ansible.builtin.command: openssl x509 -in /etc/vault.d/cert.pem -noout -subject -issuer -dates
+      register: cert_details
+      changed_when: false
+      when: auth_cert.stat.exists
+      
+    - name: Show certificate information
+      debug:
+        msg: "{{ cert_details.stdout_lines }}"
+      when: cert_details is defined and cert_details.rc == 0
+      
+    - name: Check Vault Agent logs (last 20 lines)
+      ansible.builtin.command: journalctl -u vault-agent -n 20 --no-pager
+      register: agent_logs
+      changed_when: false
+      failed_when: false
+      
+    - name: Display recent logs
+      debug:
+        msg: "{{ agent_logs.stdout_lines }}"
+      when: agent_logs is defined and agent_logs.rc == 0
+      
+    - name: Summary - Component Status
+      debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          Vault Agent Status Summary for {{ inventory_hostname }}
+          ═══════════════════════════════════════════════
+          ✓ Vault Binary: {{ 'INSTALLED' if vault_binary.stat.exists else '✗ MISSING' }}
+          ✓ Agent Config: {{ 'EXISTS' if agent_config.stat.exists else '✗ MISSING' }}
+          ✓ Service File: {{ 'EXISTS' if service_file.stat.exists else '✗ MISSING' }}
+          ✓ Auth Cert: {{ 'EXISTS' if auth_cert.stat.exists else '✗ MISSING' }}
+          ✓ Auth Key: {{ 'EXISTS' if auth_key.stat.exists else '✗ MISSING' }}
+          ✓ Service Status: {{ agent_service.status.ActiveState | default('UNKNOWN') }}
+          ═══════════════════════════════════════════════
+          
+    - name: Fail if Vault Agent is not running
+      ansible.builtin.fail:
+        msg: |
+          ⚠️  Vault Agent is NOT running on {{ inventory_hostname }}!
+          Service State: {{ agent_service.status.ActiveState | default('unknown') }}
+          Check logs above for errors.
+      when: 
+        - agent_service.status is defined
+        - agent_service.status.ActiveState != "active"

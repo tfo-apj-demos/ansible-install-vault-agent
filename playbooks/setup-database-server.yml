@@ -1,5 +1,32 @@
 ---
 # Setup PostgreSQL on database server with TLS configuration
+- name: Install Required Collections (if running standalone)
+  hosts: localhost
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Check if collections are already installed
+      ansible.builtin.stat:
+        path: "~/.ansible/collections/ansible_collections/community/postgresql"
+      register: postgresql_collection
+      
+    - name: Install community.postgresql collection
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install community.postgresql --force
+      changed_when: true
+      when: not postgresql_collection.stat.exists or (force_install | default(false))
+      
+    - name: Check if ansible.posix is installed
+      ansible.builtin.stat:
+        path: "~/.ansible/collections/ansible_collections/ansible/posix"
+      register: posix_collection
+      
+    - name: Install ansible.posix collection
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install ansible.posix --force
+      changed_when: true
+      when: not posix_collection.stat.exists or (force_install | default(false))
+
 - name: Setup PostgreSQL Database Server with TLS
   hosts: db_servers
   become: true
@@ -106,72 +133,37 @@
         delay: 5
         timeout: 30
         
-    - name: Check if demo database exists
-      ansible.builtin.shell: |
-        psql -lqt | cut -d \| -f 1 | grep -qw {{ db_name }}
-      become: true
-      become_user: postgres
-      register: db_exists
-      changed_when: false
-      failed_when: false
-      
     - name: Create demo database
-      ansible.builtin.command: psql -c "CREATE DATABASE {{ db_name }};"
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        state: present
       become: true
       become_user: postgres
-      when: db_exists.rc != 0
-      
-    - name: Check if database user exists
-      ansible.builtin.shell: |
-        psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ db_user }}'"
-      become: true
-      become_user: postgres
-      register: user_exists
-      changed_when: false
       
     - name: Create database user
-      ansible.builtin.shell: |
-        psql -c "CREATE USER {{ db_user }} WITH PASSWORD '{{ db_password }}';"
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        state: present
       become: true
       become_user: postgres
-      when: user_exists.stdout != "1"
       
     - name: Grant privileges to database user
-      ansible.builtin.command: |
-        psql -c "GRANT ALL PRIVILEGES ON DATABASE {{ db_name }} TO {{ db_user }};"
+      community.postgresql.postgresql_privs:
+        database: "{{ db_name }}"
+        roles: "{{ db_user }}"
+        privs: ALL
+        type: database
       become: true
       become_user: postgres
-      changed_when: true
-      
-    - name: Check if firewalld is running
-      ansible.builtin.systemd:
-        name: firewalld
-      register: firewalld_status
-      failed_when: false
       
     - name: Configure firewall for PostgreSQL
-      ansible.builtin.command: firewall-cmd --permanent --add-service=postgresql
-      when: 
-        - firewalld_status.status is defined
-        - firewalld_status.status.ActiveState == "active"
-      register: firewall_add
-      changed_when: "'ALREADY_ENABLED' not in firewall_add.stderr"
-      failed_when: false
-      
-    - name: Reload firewall
-      ansible.builtin.command: firewall-cmd --reload
-      when: 
-        - firewalld_status.status is defined
-        - firewalld_status.status.ActiveState == "active"
-        - firewall_add.changed
-      
-    - name: Configure firewall for PostgreSQL (fallback)
-      ansible.builtin.shell: |
-        firewall-cmd --permanent --add-service=postgresql || true
-        firewall-cmd --reload || true
+      ansible.posix.firewalld:
+        service: postgresql
+        permanent: true
+        state: enabled
+        immediate: true
       when: ansible_facts.services['firewalld.service'] is defined
-      changed_when: false
-      failed_when: false
       
     - name: Display setup summary
       ansible.builtin.debug:

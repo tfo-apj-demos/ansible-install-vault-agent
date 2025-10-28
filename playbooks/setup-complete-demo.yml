@@ -1,6 +1,22 @@
 ---
 # Master orchestration playbook for complete demo setup
 # Runs all components in the correct sequence
+- name: Install Required Collections
+  hosts: localhost
+  gather_facts: false
+  become: false
+  
+  tasks:
+    - name: Install community.postgresql collection
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install community.postgresql --force
+      changed_when: true
+      
+    - name: Install ansible.posix collection
+      ansible.builtin.command:
+        cmd: ansible-galaxy collection install ansible.posix --force
+      changed_when: true
+
 - name: Complete Demo Environment Setup
   hosts: localhost
   gather_facts: false

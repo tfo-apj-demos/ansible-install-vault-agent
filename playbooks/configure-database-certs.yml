@@ -79,6 +79,43 @@
           }
       notify: Restart Vault Agent
       
+    - name: Enable TLS in PostgreSQL configuration now that certificates will be available
+      ansible.builtin.lineinfile:
+        path: "/var/lib/pgsql/15/data/postgresql.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^#?ssl ', line: "ssl = on" }
+        - { regexp: '^#?ssl_cert_file', line: "ssl_cert_file = '/etc/pgsql/certs/server.crt'" }
+        - { regexp: '^#?ssl_key_file', line: "ssl_key_file = '/etc/pgsql/certs/server.key'" }
+        - { regexp: '^#?ssl_ca_file', line: "ssl_ca_file = '/etc/pgsql/certs/ca.crt'" }
+      
+    - name: Update PostgreSQL authentication to require TLS
+      ansible.builtin.blockinfile:
+        path: "/var/lib/pgsql/15/data/pg_hba.conf"
+        marker: "# {mark} ANSIBLE MANAGED - TLS Required"
+        block: |
+          # TYPE  DATABASE        USER            ADDRESS                 METHOD
+          # Local connections
+          local   all             all                                     peer
+          # Remote TLS connections (REQUIRED)
+          hostssl all             all             0.0.0.0/0               scram-sha-256
+          hostssl all             all             ::/0                    scram-sha-256
+          # Reject non-TLS connections
+          hostnossl all           all             0.0.0.0/0               reject
+          hostnossl all           all             ::/0                    reject
+      
+    - name: Wait for Vault Agent to provision initial certificates
+      ansible.builtin.wait_for:
+        path: /etc/pgsql/certs/server.crt
+        timeout: 60
+        
+    - name: Reload PostgreSQL to enable TLS
+      ansible.builtin.systemd:
+        name: postgresql-15
+        state: reloaded
+      
     - name: Display configuration summary
       ansible.builtin.debug:
         msg: |

@@ -56,6 +56,7 @@
         name:
           - "postgresql{{ postgresql_version }}-server"
           - "postgresql{{ postgresql_version }}-contrib"
+          - python3-psycopg2
         state: present
         
     - name: Check if PostgreSQL is initialized
@@ -90,7 +91,7 @@
         remote_src: true
       when: vault_ca_exists.stat.exists
         
-    - name: Configure PostgreSQL for TLS
+    - name: Configure PostgreSQL for network access
       ansible.builtin.lineinfile:
         path: "/var/lib/pgsql/{{ postgresql_version }}/data/postgresql.conf"
         regexp: "{{ item.regexp }}"
@@ -98,24 +99,22 @@
         state: present
       loop:
         - { regexp: '^#?listen_addresses', line: "listen_addresses = '*'" }
-        - { regexp: '^#?ssl ', line: "ssl = on" }
-        - { regexp: '^#?ssl_cert_file', line: "ssl_cert_file = '/etc/pgsql/certs/server.crt'" }
-        - { regexp: '^#?ssl_key_file', line: "ssl_key_file = '/etc/pgsql/certs/server.key'" }
-        - { regexp: '^#?ssl_ca_file', line: "ssl_ca_file = '/etc/pgsql/certs/ca.crt'" }
-      notify: Reload PostgreSQL
+        - { regexp: '^#?ssl ', line: "#ssl = off  # Will be enabled after Vault Agent provisions certificates" }
+        - { regexp: '^#?ssl_cert_file', line: "#ssl_cert_file = '/etc/pgsql/certs/server.crt'" }
+        - { regexp: '^#?ssl_key_file', line: "#ssl_key_file = '/etc/pgsql/certs/server.key'" }
+        - { regexp: '^#?ssl_ca_file', line: "#ssl_ca_file = '/etc/pgsql/certs/ca.crt'" }
       
-    - name: Configure PostgreSQL authentication (pg_hba.conf)
+    - name: Configure PostgreSQL authentication (pg_hba.conf) - permissive initially
       ansible.builtin.blockinfile:
         path: "/var/lib/pgsql/{{ postgresql_version }}/data/pg_hba.conf"
-        marker: "# {mark} ANSIBLE MANAGED - TLS Configuration"
+        marker: "# {mark} ANSIBLE MANAGED - Initial Configuration"
         block: |
           # TYPE  DATABASE        USER            ADDRESS                 METHOD
           # Local connections
           local   all             all                                     peer
-          # Remote TLS connections (required)
-          hostssl all             all             0.0.0.0/0               scram-sha-256
-          hostssl all             all             ::/0                    scram-sha-256
-      notify: Reload PostgreSQL
+          # Remote connections (will be restricted to TLS later)
+          host    all             all             0.0.0.0/0               scram-sha-256
+          host    all             all             ::/0                    scram-sha-256
       
     - name: Enable and start PostgreSQL service
       ansible.builtin.systemd:

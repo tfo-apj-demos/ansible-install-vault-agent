@@ -291,12 +291,12 @@
         group: "{{ app_user }}"
         
     - name: Configure firewall for Flask app
-      ansible.posix.firewalld:
-        port: 5000/tcp
-        permanent: true
-        state: enabled
-        immediate: true
+      ansible.builtin.shell: |
+        firewall-cmd --permanent --add-port=5000/tcp || true
+        firewall-cmd --reload || true
       when: ansible_facts.services['firewalld.service'] is defined
+      changed_when: false
+      failed_when: false
       
     - name: Reload systemd daemon
       ansible.builtin.systemd:

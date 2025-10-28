@@ -76,17 +76,16 @@
         group: postgres
         
     - name: Get Vault CA certificate
-      ansible.builtin.command: vault read -field=certificate pki/cert/ca
-      register: vault_ca_cert
-      changed_when: false
+      community.hashi_vault.vault_read:
+        url: "{{ vault_addr }}"
+        path: pki/cert/ca
+      register: vault_ca_cert_response
       delegate_to: localhost
       become: false
-      environment:
-        VAULT_ADDR: "{{ vault_addr }}"
-        
+      
     - name: Write Vault CA certificate to PostgreSQL certs directory
       ansible.builtin.copy:
-        content: "{{ vault_ca_cert.stdout }}"
+        content: "{{ vault_ca_cert_response.data.certificate }}"
         dest: /etc/pgsql/certs/ca.crt
         mode: '0644'
         owner: postgres

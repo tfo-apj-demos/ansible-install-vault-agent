@@ -11,6 +11,34 @@
     domain: "{{ target_domain | default('hashicorp.local') }}"
     
   tasks:
+    - name: Check if Vault Agent config needs repair (from previous failed run)
+      ansible.builtin.shell: |
+        # Count opening and closing braces
+        OPEN=$(grep -o '{' /etc/vault.d/vault-agent-config.hcl | wc -l)
+        CLOSE=$(grep -o '}' /etc/vault.d/vault-agent-config.hcl | wc -l)
+        if [ "$OPEN" -ne "$CLOSE" ]; then
+          echo "CORRUPT"
+        else
+          echo "OK"
+        fi
+      register: config_check
+      changed_when: false
+      
+    - name: Remove corrupted PostgreSQL templates block if present
+      ansible.builtin.blockinfile:
+        path: /etc/vault.d/vault-agent-config.hcl
+        marker: "# {mark} ANSIBLE MANAGED - PostgreSQL Certificate Templates"
+        state: absent
+      when: config_check.stdout == "CORRUPT"
+      
+    - name: Restore missing closing brace for CA template if needed
+      ansible.builtin.lineinfile:
+        path: /etc/vault.d/vault-agent-config.hcl
+        regexp: '^  error_on_missing_key = true$'
+        line: "  error_on_missing_key = true\n}"
+        backrefs: yes
+      when: config_check.stdout == "CORRUPT"
+      
     - name: Create PostgreSQL certificate renewal template
       ansible.builtin.copy:
         content: |
@@ -45,10 +73,10 @@
       ansible.builtin.blockinfile:
         path: /etc/vault.d/vault-agent-config.hcl
         marker: "# {mark} ANSIBLE MANAGED - PostgreSQL Certificate Templates"
-        insertbefore: "^}"
+        insertafter: EOF
         block: |
           
-          # PostgreSQL Server Certificate (combined format for compatibility)
+          # PostgreSQL Server Certificate
           template {
             source      = "/etc/vault.d/templates/pgsql-cert-renewal.ctmpl"
             destination = "/etc/pgsql/certs/server.crt"
@@ -68,7 +96,7 @@
             command     = "/usr/bin/systemctl reload postgresql-15"
           }
           
-          # PostgreSQL CA Certificate (already created during setup, template for consistency)
+          # PostgreSQL CA Certificate
           template {
             source      = "/etc/vault.d/templates/pgsql-ca-renewal.ctmpl"
             destination = "/etc/pgsql/certs/ca.crt"
@@ -78,6 +106,34 @@
             command     = "/usr/bin/systemctl reload postgresql-15"
           }
       notify: Restart Vault Agent
+      
+    - name: Flush handlers to restart Vault Agent immediately
+      ansible.builtin.meta: flush_handlers
+      
+    - name: Wait for Vault Agent to be ready after restart
+      ansible.builtin.wait_for:
+        port: 8100
+        delay: 2
+        timeout: 30
+      failed_when: false
+      
+    - name: Check Vault Agent status
+      ansible.builtin.systemd:
+        name: vault-agent
+      register: vault_agent_status
+      
+    - name: Display Vault Agent status
+      ansible.builtin.debug:
+        msg: "Vault Agent is {{ vault_agent_status.status.ActiveState }}"
+        
+    - name: Check Vault Agent logs for errors
+      ansible.builtin.command: journalctl -u vault-agent -n 20 --no-pager
+      register: vault_logs
+      changed_when: false
+      
+    - name: Display recent Vault Agent logs
+      ansible.builtin.debug:
+        var: vault_logs.stdout_lines
       
     - name: Enable TLS in PostgreSQL configuration now that certificates will be available
       ansible.builtin.lineinfile:
@@ -109,7 +165,9 @@
     - name: Wait for Vault Agent to provision initial certificates
       ansible.builtin.wait_for:
         path: /etc/pgsql/certs/server.crt
-        timeout: 60
+        timeout: 120
+        delay: 5
+        msg: "Timeout waiting for Vault Agent to provision PostgreSQL certificates. Check Vault Agent logs: journalctl -u vault-agent -n 50"
         
     - name: Reload PostgreSQL to enable TLS
       ansible.builtin.systemd:

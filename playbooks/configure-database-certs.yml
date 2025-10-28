@@ -14,30 +14,30 @@
     - name: Create PostgreSQL certificate renewal template
       ansible.builtin.copy:
         content: |
-          {{- /* PostgreSQL Server Certificate Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" "alt_names={{ inventory_hostname }},localhost" }}
+          {% raw %}{{- /* PostgreSQL Server Certificate Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}{% raw %},localhost" }}
           {{ .Data.certificate }}
-          {{ end }}
+          {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/pgsql-cert-renewal.ctmpl
         mode: '0644'
         
     - name: Create PostgreSQL key renewal template
       ansible.builtin.copy:
         content: |
-          {{- /* PostgreSQL Server Private Key Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" "alt_names={{ inventory_hostname }},localhost" }}
+          {% raw %}{{- /* PostgreSQL Server Private Key Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}{% raw %},localhost" }}
           {{ .Data.private_key }}
-          {{ end }}
+          {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/pgsql-key-renewal.ctmpl
         mode: '0644'
         
     - name: Create PostgreSQL CA certificate template
       ansible.builtin.copy:
         content: |
-          {{- /* PostgreSQL CA Certificate Chain Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" }}
+          {% raw %}{{- /* PostgreSQL CA Certificate Chain Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" }}
           {{ .Data.issuing_ca }}
-          {{ end }}
+          {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/pgsql-ca-renewal.ctmpl
         mode: '0644'
         

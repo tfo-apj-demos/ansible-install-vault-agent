@@ -49,8 +49,6 @@
       
     - name: Disable default PostgreSQL module
       ansible.builtin.command: dnf -qy module disable postgresql
-      args:
-        warn: false
       changed_when: false
       
     - name: Install PostgreSQL server and contrib

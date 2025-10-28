@@ -1,0 +1,150 @@
+---
+# Master orchestration playbook for complete demo setup
+# Runs all components in the correct sequence
+- name: Complete Demo Environment Setup
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Display setup overview
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          Complete Demo Environment Setup
+          ═══════════════════════════════════════════════
+          This playbook will:
+          
+          Phase 1: Database Server Setup
+            • Install PostgreSQL 15
+            • Configure TLS
+            • Create demo database and user
+          
+          Phase 2: Web Server Setup
+            • Install Python Flask application
+            • Configure connection pooling
+            • Setup signal handling for SIGUSR1
+          
+          Phase 3: Certificate Configuration
+            • Configure Vault Agent templates for PostgreSQL
+            • Configure Vault Agent templates for application
+            • Setup EDA integration (KV write-back)
+          
+          Phase 4: Service Activation
+            • Start PostgreSQL with TLS
+            • Start Flask application
+            • Start certificate rotation
+          
+          Inventory Groups Required:
+            • db_servers  - Database servers
+            • web_servers - Web application servers
+          
+          ═══════════════════════════════════════════════
+          Starting setup in 5 seconds...
+          ═══════════════════════════════════════════════
+      
+    - name: Pause for review
+      ansible.builtin.pause:
+        seconds: 5
+
+# Phase 1: Setup PostgreSQL Database Server
+- name: Phase 1 - Setup Database Server
+  ansible.builtin.import_playbook: setup-database-server.yml
+
+# Phase 2: Setup Flask Web Application  
+- name: Phase 2 - Setup Web Application Server
+  ansible.builtin.import_playbook: setup-web-server.yml
+
+# Phase 3: Configure Database Certificate Rotation
+- name: Phase 3 - Configure Database Certificates
+  ansible.builtin.import_playbook: configure-database-certs.yml
+
+# Phase 4: Configure Application Certificate Rotation
+- name: Phase 4 - Configure Application Certificates
+  ansible.builtin.import_playbook: configure-web-certs.yml
+
+# Final Summary
+- name: Setup Complete - Display Summary
+  hosts: localhost
+  gather_facts: false
+  
+  tasks:
+    - name: Display final summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          🎉 DEMO ENVIRONMENT SETUP COMPLETE 🎉
+          ═══════════════════════════════════════════════
+          
+          Components Deployed:
+            ✅ PostgreSQL 15 with TLS on db_servers
+            ✅ Flask Demo Application on web_servers
+            ✅ Vault Agent certificate templates
+            ✅ EDA integration via KV write-back
+          
+          Certificate Rotation Active:
+            • PostgreSQL server certificates: Every 90s
+            • Application client certificates: Every 90s
+            • Automatic PostgreSQL reload on rotation
+            • Automatic connection pool reload on rotation
+          
+          Event-Driven Automation:
+            • Certificate rotation → KV write
+            • EDA detects KV change
+            • Triggers Demo Job Template
+            • Application pool reloads automatically
+          
+          ═══════════════════════════════════════════════
+          Next Steps:
+          ═══════════════════════════════════════════════
+          
+          1. Test Application Endpoints:
+             curl http://web-server-01:5000/health
+             curl http://web-server-01:5000/info
+             curl http://web-server-01:5000/db/test
+          
+          2. Monitor Certificate Rotation:
+             # On database server
+             watch -n 5 'openssl x509 -in /etc/pgsql/certs/server.crt -noout -dates'
+             
+             # On web server
+             watch -n 5 'openssl x509 -in /opt/demo-app/certs/client.crt -noout -dates'
+          
+          3. Monitor EDA Events:
+             # In AAP, watch rulebook activation logs
+             # Should see events every 90 seconds
+          
+          4. Verify Automation:
+             # Check Demo Job Template executions in AAP
+             # Should trigger after each cert rotation
+          
+          5. Check Application Logs:
+             # On web server
+             tail -f /opt/demo-app/logs/app.log
+             # Should see "Connection pool reinitialized" messages
+          
+          ═══════════════════════════════════════════════
+          Architecture Overview:
+          ═══════════════════════════════════════════════
+          
+          Vault PKI (server role, 90s TTL)
+                    ↓
+          Vault Agent (templates + exec blocks)
+                    ↓
+          ┌─────────┴─────────┐
+          ↓                   ↓
+          PostgreSQL        Flask App
+          (TLS certs)       (Client certs)
+          (reload)          (SIGUSR1 → pool reload)
+                            (exec → KV write)
+                            ↓
+                            Vault KV
+                            ↓
+                            EDA (WebSocket listener)
+                            ↓
+                            Demo Job Template (AAP)
+          
+          ═══════════════════════════════════════════════
+          
+          Your demo is ready! 🚀
+          
+          ═══════════════════════════════════════════════

@@ -1,0 +1,163 @@
+---
+# Setup PostgreSQL on database server with TLS configuration
+- name: Setup PostgreSQL Database Server with TLS
+  hosts: db_servers
+  become: true
+  gather_facts: true
+  
+  vars:
+    postgresql_version: "15"
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+    db_name: "demo_app"
+    db_user: "app_user"
+    db_password: "SecurePass123!"  # In production, use Ansible Vault or Vault secrets
+    
+  tasks:
+    - name: Install PostgreSQL repository
+      ansible.builtin.dnf:
+        name: "https://download.postgresql.org/pub/repos/yum/reporpms/EL-9-x86_64/pgdg-redhat-repo-latest.noarch.rpm"
+        state: present
+        disable_gpg_check: true
+      
+    - name: Disable default PostgreSQL module
+      ansible.builtin.command: dnf -qy module disable postgresql
+      args:
+        warn: false
+      changed_when: false
+      
+    - name: Install PostgreSQL server and contrib
+      ansible.builtin.dnf:
+        name:
+          - "postgresql{{ postgresql_version }}-server"
+          - "postgresql{{ postgresql_version }}-contrib"
+        state: present
+        
+    - name: Check if PostgreSQL is initialized
+      ansible.builtin.stat:
+        path: "/var/lib/pgsql/{{ postgresql_version }}/data/PG_VERSION"
+      register: pgdata_dir
+      
+    - name: Initialize PostgreSQL database
+      ansible.builtin.command: "/usr/pgsql-{{ postgresql_version }}/bin/postgresql-{{ postgresql_version }}-setup initdb"
+      when: not pgdata_dir.stat.exists
+      
+    - name: Create PostgreSQL certificates directory
+      ansible.builtin.file:
+        path: /etc/pgsql/certs
+        state: directory
+        mode: '0700'
+        owner: postgres
+        group: postgres
+        
+    - name: Get Vault CA certificate
+      ansible.builtin.command: vault read -field=certificate pki/cert/ca
+      register: vault_ca_cert
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        
+    - name: Write Vault CA certificate to PostgreSQL certs directory
+      ansible.builtin.copy:
+        content: "{{ vault_ca_cert.stdout }}"
+        dest: /etc/pgsql/certs/ca.crt
+        mode: '0644'
+        owner: postgres
+        group: postgres
+        
+    - name: Configure PostgreSQL for TLS
+      ansible.builtin.lineinfile:
+        path: "/var/lib/pgsql/{{ postgresql_version }}/data/postgresql.conf"
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+      loop:
+        - { regexp: '^#?listen_addresses', line: "listen_addresses = '*'" }
+        - { regexp: '^#?ssl ', line: "ssl = on" }
+        - { regexp: '^#?ssl_cert_file', line: "ssl_cert_file = '/etc/pgsql/certs/server.crt'" }
+        - { regexp: '^#?ssl_key_file', line: "ssl_key_file = '/etc/pgsql/certs/server.key'" }
+        - { regexp: '^#?ssl_ca_file', line: "ssl_ca_file = '/etc/pgsql/certs/ca.crt'" }
+      notify: Reload PostgreSQL
+      
+    - name: Configure PostgreSQL authentication (pg_hba.conf)
+      ansible.builtin.blockinfile:
+        path: "/var/lib/pgsql/{{ postgresql_version }}/data/pg_hba.conf"
+        marker: "# {mark} ANSIBLE MANAGED - TLS Configuration"
+        block: |
+          # TYPE  DATABASE        USER            ADDRESS                 METHOD
+          # Local connections
+          local   all             all                                     peer
+          # Remote TLS connections (required)
+          hostssl all             all             0.0.0.0/0               scram-sha-256
+          hostssl all             all             ::/0                    scram-sha-256
+      notify: Reload PostgreSQL
+      
+    - name: Enable and start PostgreSQL service
+      ansible.builtin.systemd:
+        name: "postgresql-{{ postgresql_version }}"
+        enabled: true
+        state: started
+        
+    - name: Wait for PostgreSQL to be ready
+      ansible.builtin.wait_for:
+        port: 5432
+        delay: 5
+        timeout: 30
+        
+    - name: Create demo database
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+        state: present
+      become: true
+      become_user: postgres
+      
+    - name: Create database user
+      community.postgresql.postgresql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        state: present
+      become: true
+      become_user: postgres
+      
+    - name: Grant privileges to database user
+      community.postgresql.postgresql_privs:
+        database: "{{ db_name }}"
+        roles: "{{ db_user }}"
+        privs: ALL
+        type: database
+      become: true
+      become_user: postgres
+      
+    - name: Configure firewall for PostgreSQL
+      ansible.posix.firewalld:
+        service: postgresql
+        permanent: true
+        state: enabled
+        immediate: true
+      when: ansible_facts.services['firewalld.service'] is defined
+      
+    - name: Display setup summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          PostgreSQL Setup Complete
+          ═══════════════════════════════════════════════
+          Database: {{ db_name }}
+          User: {{ db_user }}
+          TLS: Enabled (requires client certificates)
+          Cert Directory: /etc/pgsql/certs/
+          Status: Waiting for Vault Agent to provision certificates
+          ═══════════════════════════════════════════════
+          Next Steps:
+          1. Configure Vault Agent to provision PostgreSQL certificates
+          2. Certificates will auto-rotate every 90 seconds
+          3. EDA will detect rotation and trigger automation
+          ═══════════════════════════════════════════════
+  
+  handlers:
+    - name: Reload PostgreSQL
+      ansible.builtin.systemd:
+        name: "postgresql-{{ postgresql_version }}"
+        state: reloaded

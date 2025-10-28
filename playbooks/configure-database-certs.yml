@@ -1,0 +1,107 @@
+---
+# Configure Vault Agent with PostgreSQL certificate templates
+# Run this AFTER setup-database-server.yml
+- name: Configure Vault Agent for PostgreSQL TLS Certificates
+  hosts: db_servers
+  become: true
+  gather_facts: true
+  
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+    
+  tasks:
+    - name: Create PostgreSQL certificate renewal template
+      ansible.builtin.copy:
+        content: |
+          {{- /* PostgreSQL Server Certificate Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" "alt_names={{ inventory_hostname }},localhost" }}
+          {{ .Data.certificate }}
+          {{ end }}
+        dest: /etc/vault.d/templates/pgsql-cert-renewal.ctmpl
+        mode: '0644'
+        
+    - name: Create PostgreSQL key renewal template
+      ansible.builtin.copy:
+        content: |
+          {{- /* PostgreSQL Server Private Key Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" "alt_names={{ inventory_hostname }},localhost" }}
+          {{ .Data.private_key }}
+          {{ end }}
+        dest: /etc/vault.d/templates/pgsql-key-renewal.ctmpl
+        mode: '0644'
+        
+    - name: Create PostgreSQL CA certificate template
+      ansible.builtin.copy:
+        content: |
+          {{- /* PostgreSQL CA Certificate Chain Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" }}
+          {{ .Data.issuing_ca }}
+          {{ end }}
+        dest: /etc/vault.d/templates/pgsql-ca-renewal.ctmpl
+        mode: '0644'
+        
+    - name: Update Vault Agent configuration for PostgreSQL
+      ansible.builtin.blockinfile:
+        path: /etc/vault.d/vault-agent-config.hcl
+        marker: "# {mark} ANSIBLE MANAGED - PostgreSQL Certificate Templates"
+        insertbefore: "^}"
+        block: |
+          
+          # PostgreSQL Server Certificate (combined format for compatibility)
+          template {
+            source      = "/etc/vault.d/templates/pgsql-cert-renewal.ctmpl"
+            destination = "/etc/pgsql/certs/server.crt"
+            perms       = "0644"
+            user        = "postgres"
+            group       = "postgres"
+            command     = "/usr/bin/systemctl reload postgresql-15"
+          }
+          
+          # PostgreSQL Server Private Key
+          template {
+            source      = "/etc/vault.d/templates/pgsql-key-renewal.ctmpl"
+            destination = "/etc/pgsql/certs/server.key"
+            perms       = "0600"
+            user        = "postgres"
+            group       = "postgres"
+            command     = "/usr/bin/systemctl reload postgresql-15"
+          }
+          
+          # PostgreSQL CA Certificate (already created during setup, template for consistency)
+          template {
+            source      = "/etc/vault.d/templates/pgsql-ca-renewal.ctmpl"
+            destination = "/etc/pgsql/certs/ca.crt"
+            perms       = "0644"
+            user        = "postgres"
+            group       = "postgres"
+            command     = "/usr/bin/systemctl reload postgresql-15"
+          }
+      notify: Restart Vault Agent
+      
+    - name: Display configuration summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          PostgreSQL Vault Agent Configuration Complete
+          ═══════════════════════════════════════════════
+          Templates Added:
+            • pgsql-cert-renewal.ctmpl → /etc/pgsql/certs/server.crt
+            • pgsql-key-renewal.ctmpl  → /etc/pgsql/certs/server.key
+            • pgsql-ca-renewal.ctmpl   → /etc/pgsql/certs/ca.crt
+          
+          Certificate Rotation: Every 90 seconds
+          Action: systemctl reload postgresql-15
+          
+          Vault Agent will now:
+          1. Request certificates from Vault PKI
+          2. Write to PostgreSQL cert directory
+          3. Reload PostgreSQL when certs change
+          4. PostgreSQL will use new certs without downtime
+          ═══════════════════════════════════════════════
+  
+  handlers:
+    - name: Restart Vault Agent
+      ansible.builtin.systemd:
+        name: vault-agent
+        state: restarted

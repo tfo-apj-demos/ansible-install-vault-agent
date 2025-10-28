@@ -1,0 +1,331 @@
+---
+# Setup Python Flask demo application with PostgreSQL TLS connection
+- name: Setup Python Flask Demo Application
+  hosts: web_servers
+  become: true
+  gather_facts: true
+  
+  vars:
+    app_dir: "/opt/demo-app"
+    app_user: "demo-app"
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    db_host: "database-server-01.hashicorp.local"
+    db_name: "demo_app"
+    db_user: "app_user"
+    db_password: "SecurePass123!"  # In production, use Ansible Vault or Vault secrets
+    
+  tasks:
+    - name: Install Python and dependencies
+      ansible.builtin.dnf:
+        name:
+          - python3
+          - python3-pip
+          - python3-devel
+          - gcc
+          - postgresql-devel
+        state: present
+        
+    - name: Create application user
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        system: true
+        shell: /bin/bash
+        home: "{{ app_dir }}"
+        create_home: true
+        
+    - name: Create application directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+      loop:
+        - "{{ app_dir }}"
+        - "{{ app_dir }}/certs"
+        - "{{ app_dir }}/logs"
+        
+    - name: Install Python application dependencies
+      ansible.builtin.pip:
+        name:
+          - flask==3.0.0
+          - psycopg2-binary==2.9.9
+          - gunicorn==21.2.0
+        state: present
+        executable: pip3
+        
+    - name: Deploy Flask application
+      ansible.builtin.copy:
+        content: |
+          #!/usr/bin/env python3
+          """
+          Flask Demo Application with PostgreSQL TLS Connection
+          Demonstrates certificate rotation with connection pool restart
+          """
+          import os
+          import sys
+          import logging
+          import psycopg2
+          from psycopg2 import pool
+          from flask import Flask, jsonify, request
+          from datetime import datetime
+          import signal
+          
+          # Configure logging
+          logging.basicConfig(
+              level=logging.INFO,
+              format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+              handlers=[
+                  logging.FileHandler('/opt/demo-app/logs/app.log'),
+                  logging.StreamHandler(sys.stdout)
+              ]
+          )
+          logger = logging.getLogger(__name__)
+          
+          app = Flask(__name__)
+          
+          # Database configuration
+          DB_CONFIG = {
+              'host': os.getenv('DB_HOST', '{{ db_host }}'),
+              'port': os.getenv('DB_PORT', '5432'),
+              'database': os.getenv('DB_NAME', '{{ db_name }}'),
+              'user': os.getenv('DB_USER', '{{ db_user }}'),
+              'password': os.getenv('DB_PASSWORD', '{{ db_password }}'),
+              'sslmode': 'verify-full',
+              'sslcert': '/opt/demo-app/certs/client.crt',
+              'sslkey': '/opt/demo-app/certs/client.key',
+              'sslrootcert': '/opt/demo-app/certs/ca.crt'
+          }
+          
+          # Connection pool
+          connection_pool = None
+          
+          def initialize_pool():
+              """Initialize or reinitialize the database connection pool"""
+              global connection_pool
+              try:
+                  if connection_pool:
+                      connection_pool.closeall()
+                      logger.info("Closed existing connection pool")
+                  
+                  connection_pool = psycopg2.pool.SimpleConnectionPool(
+                      minconn=1,
+                      maxconn=10,
+                      **DB_CONFIG
+                  )
+                  logger.info("Connection pool initialized successfully")
+                  return True
+              except Exception as e:
+                  logger.error(f"Failed to initialize connection pool: {e}")
+                  return False
+          
+          def handle_sigusr1(signum, frame):
+              """Handle SIGUSR1 signal to reinitialize connection pool"""
+              logger.info("Received SIGUSR1 signal - reinitializing connection pool")
+              if initialize_pool():
+                  logger.info("Connection pool reinitialized successfully after certificate rotation")
+              else:
+                  logger.error("Failed to reinitialize connection pool after certificate rotation")
+          
+          # Register signal handler for certificate rotation
+          signal.signal(signal.SIGUSR1, handle_sigusr1)
+          
+          @app.route('/health', methods=['GET'])
+          def health_check():
+              """Health check endpoint"""
+              return jsonify({
+                  'status': 'healthy',
+                  'timestamp': datetime.now().isoformat(),
+                  'service': 'demo-app'
+              }), 200
+          
+          @app.route('/db/test', methods=['GET'])
+          def test_database():
+              """Test database connection"""
+              conn = None
+              cursor = None
+              try:
+                  if not connection_pool:
+                      initialize_pool()
+                  
+                  conn = connection_pool.getconn()
+                  cursor = conn.cursor()
+                  
+                  # Get PostgreSQL version
+                  cursor.execute("SELECT version();")
+                  version = cursor.fetchone()[0]
+                  
+                  # Get SSL information
+                  cursor.execute("SELECT ssl_is_used();")
+                  ssl_used = cursor.fetchone()[0]
+                  
+                  cursor.execute("SELECT ssl_version();")
+                  ssl_version = cursor.fetchone()[0]
+                  
+                  cursor.execute("SELECT ssl_cipher();")
+                  ssl_cipher = cursor.fetchone()[0]
+                  
+                  result = {
+                      'status': 'success',
+                      'timestamp': datetime.now().isoformat(),
+                      'database': {
+                          'version': version.split()[1],
+                          'ssl_enabled': ssl_used,
+                          'ssl_version': ssl_version,
+                          'ssl_cipher': ssl_cipher
+                      },
+                      'connection': {
+                          'host': DB_CONFIG['host'],
+                          'database': DB_CONFIG['database'],
+                          'user': DB_CONFIG['user']
+                      }
+                  }
+                  
+                  logger.info(f"Database test successful: {result}")
+                  return jsonify(result), 200
+                  
+              except Exception as e:
+                  logger.error(f"Database test failed: {e}")
+                  return jsonify({
+                      'status': 'error',
+                      'timestamp': datetime.now().isoformat(),
+                      'error': str(e)
+                  }), 500
+              finally:
+                  if cursor:
+                      cursor.close()
+                  if conn:
+                      connection_pool.putconn(conn)
+          
+          @app.route('/db/reload', methods=['POST'])
+          def reload_pool():
+              """Manually trigger connection pool reload"""
+              logger.info("Manual connection pool reload requested")
+              if initialize_pool():
+                  return jsonify({
+                      'status': 'success',
+                      'timestamp': datetime.now().isoformat(),
+                      'message': 'Connection pool reloaded successfully'
+                  }), 200
+              else:
+                  return jsonify({
+                      'status': 'error',
+                      'timestamp': datetime.now().isoformat(),
+                      'message': 'Failed to reload connection pool'
+                  }), 500
+          
+          @app.route('/info', methods=['GET'])
+          def info():
+              """Application information endpoint"""
+              return jsonify({
+                  'application': 'Flask Demo App',
+                  'version': '1.0.0',
+                  'endpoints': [
+                      '/health - Health check',
+                      '/db/test - Test database connection with TLS',
+                      '/db/reload - Manually reload connection pool',
+                      '/info - Application information'
+                  ],
+                  'features': [
+                      'TLS-enabled PostgreSQL connection',
+                      'Certificate rotation handling via SIGUSR1',
+                      'Connection pool management',
+                      'Automated certificate updates via Vault Agent'
+                  ]
+              }), 200
+          
+          if __name__ == '__main__':
+              logger.info("Starting Flask demo application")
+              initialize_pool()
+              app.run(host='0.0.0.0', port=5000, debug=False)
+        dest: "{{ app_dir }}/app.py"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0755'
+        
+    - name: Create systemd service file for Flask app
+      ansible.builtin.copy:
+        content: |
+          [Unit]
+          Description=Flask Demo Application
+          After=network.target vault-agent.service
+          Wants=vault-agent.service
+          
+          [Service]
+          Type=simple
+          User={{ app_user }}
+          Group={{ app_user }}
+          WorkingDirectory={{ app_dir }}
+          Environment="DB_HOST={{ db_host }}"
+          Environment="DB_NAME={{ db_name }}"
+          Environment="DB_USER={{ db_user }}"
+          Environment="DB_PASSWORD={{ db_password }}"
+          ExecStart=/usr/bin/python3 {{ app_dir }}/app.py
+          Restart=always
+          RestartSec=5
+          
+          # Security settings
+          NoNewPrivileges=true
+          PrivateTmp=true
+          
+          [Install]
+          WantedBy=multi-user.target
+        dest: /etc/systemd/system/demo-app.service
+        mode: '0644'
+        
+    - name: Get Vault CA certificate for client connections
+      ansible.builtin.command: vault read -field=certificate pki/cert/ca
+      register: vault_ca_cert
+      changed_when: false
+      delegate_to: localhost
+      become: false
+      environment:
+        VAULT_ADDR: "{{ vault_addr }}"
+        
+    - name: Write Vault CA certificate for app
+      ansible.builtin.copy:
+        content: "{{ vault_ca_cert.stdout }}"
+        dest: "{{ app_dir }}/certs/ca.crt"
+        mode: '0644'
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        
+    - name: Configure firewall for Flask app
+      ansible.posix.firewalld:
+        port: 5000/tcp
+        permanent: true
+        state: enabled
+        immediate: true
+      when: ansible_facts.services['firewalld.service'] is defined
+      
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+        
+    - name: Display setup summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          Flask Demo Application Setup Complete
+          ═══════════════════════════════════════════════
+          Application Directory: {{ app_dir }}
+          User: {{ app_user }}
+          Port: 5000
+          TLS: Enabled (client certificates required)
+          Status: Waiting for Vault Agent to provision certificates
+          ═══════════════════════════════════════════════
+          Endpoints:
+            • GET  /health       - Health check
+            • GET  /db/test      - Test DB connection with TLS
+            • POST /db/reload    - Reload connection pool
+            • GET  /info         - Application info
+          ═══════════════════════════════════════════════
+          Next Steps:
+          1. Configure Vault Agent to provision client certificates
+          2. Start the application service
+          3. Certificates will auto-rotate and trigger pool reload
+          ═══════════════════════════════════════════════
+          
+          Note: Service is NOT started yet. Will start after
+          certificates are provisioned by Vault Agent.
+          ═══════════════════════════════════════════════

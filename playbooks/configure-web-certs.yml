@@ -1,0 +1,145 @@
+---
+# Configure Vault Agent with application client certificate templates
+# Run this AFTER setup-web-server.yml
+- name: Configure Vault Agent for Application Client Certificates
+  hosts: web_servers
+  become: true
+  gather_facts: true
+  
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+    app_dir: "/opt/demo-app"
+    
+  tasks:
+    - name: Create application client certificate renewal template
+      ansible.builtin.copy:
+        content: |
+          {{- /* Application Client Certificate Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" }}
+          {{ .Data.certificate }}
+          {{ end }}
+        dest: /etc/vault.d/templates/app-client-cert-renewal.ctmpl
+        mode: '0644'
+        
+    - name: Create application client key renewal template
+      ansible.builtin.copy:
+        content: |
+          {{- /* Application Client Private Key Template */ -}}
+          {{ with secret "pki/issue/server" "common_name={{ inventory_hostname }}.{{ domain }}" "ttl=90s" }}
+          {{ .Data.private_key }}
+          {{ end }}
+        dest: /etc/vault.d/templates/app-client-key-renewal.ctmpl
+        mode: '0644'
+        
+    - name: Create KV write-back script for EDA integration
+      ansible.builtin.copy:
+        content: |
+          #!/bin/bash
+          # Write certificate rotation event to Vault KV for EDA detection
+          set -e
+          
+          TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          HOSTNAME=$(hostname -f)
+          
+          # Write to Vault KV
+          vault kv put secrets/certificate-rotation \
+            hostname="${HOSTNAME}" \
+            event="certificate_rotated" \
+            timestamp="${TIMESTAMP}" \
+            certificate_type="application_client" \
+            service="demo-app" \
+            action_required="reload_connection_pool"
+          
+          echo "[$(date)] Certificate rotation event written to Vault KV"
+        dest: /etc/vault.d/scripts/notify-cert-rotation.sh
+        mode: '0755'
+        
+    - name: Update Vault Agent configuration for application certificates
+      ansible.builtin.blockinfile:
+        path: /etc/vault.d/vault-agent-config.hcl
+        marker: "# {mark} ANSIBLE MANAGED - Application Certificate Templates"
+        insertbefore: "^}"
+        block: |
+          
+          # Application Client Certificate
+          template {
+            source      = "/etc/vault.d/templates/app-client-cert-renewal.ctmpl"
+            destination = "{{ app_dir }}/certs/client.crt"
+            perms       = "0644"
+            user        = "demo-app"
+            group       = "demo-app"
+            exec {
+              command = ["/etc/vault.d/scripts/notify-cert-rotation.sh"]
+            }
+          }
+          
+          # Application Client Private Key
+          template {
+            source      = "/etc/vault.d/templates/app-client-key-renewal.ctmpl"
+            destination = "{{ app_dir }}/certs/client.key"
+            perms       = "0600"
+            user        = "demo-app"
+            group       = "demo-app"
+            command     = "/usr/bin/pkill -SIGUSR1 -f 'python3 {{ app_dir }}/app.py'"
+          }
+      notify: Restart Vault Agent
+      
+    - name: Start demo application service
+      ansible.builtin.systemd:
+        name: demo-app
+        enabled: true
+        state: started
+        
+    - name: Wait for application to be ready
+      ansible.builtin.wait_for:
+        port: 5000
+        delay: 3
+        timeout: 30
+        
+    - name: Test application health endpoint
+      ansible.builtin.uri:
+        url: http://localhost:5000/health
+        method: GET
+        return_content: true
+      register: health_check
+      retries: 3
+      delay: 2
+      
+    - name: Display configuration summary
+      ansible.builtin.debug:
+        msg: |
+          ═══════════════════════════════════════════════
+          Application Vault Agent Configuration Complete
+          ═══════════════════════════════════════════════
+          Templates Added:
+            • app-client-cert-renewal.ctmpl → {{ app_dir }}/certs/client.crt
+            • app-client-key-renewal.ctmpl  → {{ app_dir }}/certs/client.key
+          
+          Certificate Rotation: Every 90 seconds
+          Actions on Rotation:
+            1. Write event to Vault KV (triggers EDA)
+            2. Send SIGUSR1 to Python app (reloads pool)
+          
+          Application Status: {{ health_check.json.status | upper }}
+          Application Port: 5000
+          
+          Workflow:
+          1. Vault Agent rotates certificates every 90s
+          2. Exec block writes to secrets/certificate-rotation
+          3. EDA detects KV change via WebSocket
+          4. EDA triggers Demo Job Template in AAP
+          5. Application receives SIGUSR1 and reloads pool
+          ═══════════════════════════════════════════════
+          
+          Test the application:
+            curl http://{{ inventory_hostname }}:5000/health
+            curl http://{{ inventory_hostname }}:5000/info
+            curl http://{{ inventory_hostname }}:5000/db/test
+          ═══════════════════════════════════════════════
+  
+  handlers:
+    - name: Restart Vault Agent
+      ansible.builtin.systemd:
+        name: vault-agent
+        state: restarted

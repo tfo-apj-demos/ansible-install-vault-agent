@@ -293,6 +293,9 @@
       community.hashi_vault.vault_read:
         url: "{{ vault_addr }}"
         path: pki/cert/ca
+        auth_method: approle
+        role_id: "{{ role_id }}"
+        secret_id: "{{ secret_id }}"
       register: vault_ca_cert_response
       delegate_to: localhost
       become: false

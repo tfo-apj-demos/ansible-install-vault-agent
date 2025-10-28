@@ -51,8 +51,8 @@
             • Start certificate rotation
           
           Inventory Groups Required:
-            • db_servers  - Database servers
-            • web_servers - Web application servers
+            • db_server  - Database servers
+            • web_server - Web application servers
           
           ═══════════════════════════════════════════════
           Starting setup in 5 seconds...

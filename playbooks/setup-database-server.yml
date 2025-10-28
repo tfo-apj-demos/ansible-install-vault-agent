@@ -28,7 +28,7 @@
       when: not posix_collection.stat.exists or (force_install | default(false))
 
 - name: Setup PostgreSQL Database Server with TLS
-  hosts: db_servers
+  hosts: db_server
   become: true
   gather_facts: true
   

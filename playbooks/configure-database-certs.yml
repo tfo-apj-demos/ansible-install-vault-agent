@@ -2,7 +2,7 @@
 # Configure Vault Agent with PostgreSQL certificate templates
 # Run this AFTER setup-database-server.yml
 - name: Configure Vault Agent for PostgreSQL TLS Certificates
-  hosts: db_servers
+  hosts: db_server
   become: true
   gather_facts: true
   

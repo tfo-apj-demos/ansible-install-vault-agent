@@ -17,7 +17,7 @@
       when: not posix_collection.stat.exists or (force_install | default(false))
 
 - name: Setup Python Flask Demo Application
-  hosts: web_servers
+  hosts: web_server
   become: true
   gather_facts: true
   

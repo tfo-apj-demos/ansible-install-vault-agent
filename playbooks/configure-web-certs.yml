@@ -2,7 +2,7 @@
 # Configure Vault Agent with application client certificate templates
 # Run this AFTER setup-web-server.yml
 - name: Configure Vault Agent for Application Client Certificates
-  hosts: web_servers
+  hosts: web_server
   become: true
   gather_facts: true
   

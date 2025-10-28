@@ -75,24 +75,20 @@
         owner: postgres
         group: postgres
         
-    - name: Get Vault CA certificate
-      community.hashi_vault.vault_read:
-        url: "{{ vault_addr }}"
-        path: pki/cert/ca
-        auth_method: approle
-        role_id: "{{ role_id }}"
-        secret_id: "{{ secret_id }}"
-      register: vault_ca_cert_response
-      delegate_to: localhost
-      become: false
+    - name: Check if Vault CA already exists in system trust store
+      ansible.builtin.stat:
+        path: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
+      register: vault_ca_exists
       
-    - name: Write Vault CA certificate to PostgreSQL certs directory
+    - name: Copy Vault CA from system trust store to PostgreSQL certs directory
       ansible.builtin.copy:
-        content: "{{ vault_ca_cert_response.data.certificate }}"
+        src: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
         dest: /etc/pgsql/certs/ca.crt
         mode: '0644'
         owner: postgres
         group: postgres
+        remote_src: true
+      when: vault_ca_exists.stat.exists
         
     - name: Configure PostgreSQL for TLS
       ansible.builtin.lineinfile:

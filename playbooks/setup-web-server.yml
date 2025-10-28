@@ -289,24 +289,20 @@
         dest: /etc/systemd/system/demo-app.service
         mode: '0644'
         
-    - name: Get Vault CA certificate for client connections
-      community.hashi_vault.vault_read:
-        url: "{{ vault_addr }}"
-        path: pki/cert/ca
-        auth_method: approle
-        role_id: "{{ role_id }}"
-        secret_id: "{{ secret_id }}"
-      register: vault_ca_cert_response
-      delegate_to: localhost
-      become: false
+    - name: Check if Vault CA already exists in system trust store
+      ansible.builtin.stat:
+        path: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
+      register: vault_ca_exists
         
-    - name: Write Vault CA certificate for app
+    - name: Copy Vault CA from system trust store to app certs directory
       ansible.builtin.copy:
-        content: "{{ vault_ca_cert_response.data.certificate }}"
+        src: /etc/pki/ca-trust/source/anchors/trusted-user-ca-keys.pem
         dest: "{{ app_dir }}/certs/ca.crt"
         mode: '0644'
         owner: "{{ app_user }}"
         group: "{{ app_user }}"
+        remote_src: true
+      when: vault_ca_exists.stat.exists
         
     - name: Configure firewall for Flask app
       ansible.posix.firewalld:

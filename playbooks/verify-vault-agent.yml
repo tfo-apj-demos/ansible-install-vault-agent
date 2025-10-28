@@ -24,7 +24,7 @@
       
     - name: Check if Vault Agent config exists
       ansible.builtin.stat:
-        path: /etc/vault.d/vault-agent.hcl
+        path: /etc/vault.d/vault-agent-config.hcl
       register: agent_config
       
     - name: Check if systemd service file exists
@@ -57,6 +57,18 @@
         path: /etc/vault.d/tpm-private-key.pem
       register: auth_key
       
+    - name: Check for certificate renewal templates
+      ansible.builtin.find:
+        paths: /etc/vault.d/templates
+        patterns: "*.ctmpl"
+      register: renewal_templates
+      failed_when: false
+      
+    - name: List renewal templates
+      debug:
+        msg: "Found {{ renewal_templates.matched }} renewal template(s): {{ renewal_templates.files | map(attribute='path') | list }}"
+      when: renewal_templates.matched is defined and renewal_templates.matched > 0
+      
     - name: Display certificate details
       ansible.builtin.command: openssl x509 -in /etc/vault.d/cert.pem -noout -subject -issuer -dates
       register: cert_details
@@ -66,7 +78,9 @@
     - name: Show certificate information
       debug:
         msg: "{{ cert_details.stdout_lines }}"
-      when: cert_details is defined and cert_details.rc == 0
+      when: 
+        - cert_details is defined
+        - cert_details.stdout_lines is defined
       
     - name: Check Vault Agent logs (last 20 lines)
       ansible.builtin.command: journalctl -u vault-agent -n 20 --no-pager
@@ -77,7 +91,9 @@
     - name: Display recent logs
       debug:
         msg: "{{ agent_logs.stdout_lines }}"
-      when: agent_logs is defined and agent_logs.rc == 0
+      when: 
+        - agent_logs is defined
+        - agent_logs.stdout_lines is defined
       
     - name: Summary - Component Status
       debug:
@@ -88,9 +104,11 @@
           ✓ Vault Binary: {{ 'INSTALLED' if vault_binary.stat.exists else '✗ MISSING' }}
           ✓ Agent Config: {{ 'EXISTS' if agent_config.stat.exists else '✗ MISSING' }}
           ✓ Service File: {{ 'EXISTS' if service_file.stat.exists else '✗ MISSING' }}
-          ✓ Auth Cert: {{ 'EXISTS' if auth_cert.stat.exists else '✗ MISSING' }}
+          ✓ Auth Cert: {{ 'EXISTS (CN=' + inventory_hostname + ')' if auth_cert.stat.exists else '✗ MISSING' }}
           ✓ Auth Key: {{ 'EXISTS' if auth_key.stat.exists else '✗ MISSING' }}
+          ✓ Renewal Templates: {{ renewal_templates.matched | default(0) }} found
           ✓ Service Status: {{ agent_service.status.ActiveState | default('UNKNOWN') }}
+          {{ '✓ Service Running: YES' if agent_service.status.ActiveState == 'active' else '✗ Service Running: NO' }}
           ═══════════════════════════════════════════════
           
     - name: Fail if Vault Agent is not running

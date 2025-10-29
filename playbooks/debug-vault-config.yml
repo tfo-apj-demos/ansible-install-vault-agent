@@ -1,0 +1,45 @@
+---
+# Quick diagnostic playbook to check Vault Agent config
+- name: Debug Vault Agent Configuration
+  hosts: database-server-01
+  become: true
+  gather_facts: false
+  
+  tasks:
+    - name: Display current Vault Agent configuration
+      ansible.builtin.command: cat /etc/vault.d/vault-agent-config.hcl
+      register: current_config
+      changed_when: false
+      
+    - name: Show configuration
+      ansible.builtin.debug:
+        msg: "{{ current_config.stdout_lines }}"
+        
+    - name: Check brace count
+      ansible.builtin.shell: |
+        echo "Opening braces: $(grep -o '{' /etc/vault.d/vault-agent-config.hcl | wc -l)"
+        echo "Closing braces: $(grep -o '}' /etc/vault.d/vault-agent-config.hcl | wc -l)"
+      register: brace_count
+      changed_when: false
+      
+    - name: Display brace count
+      ansible.builtin.debug:
+        msg: "{{ brace_count.stdout_lines }}"
+        
+    - name: Check Vault Agent service status
+      ansible.builtin.systemd:
+        name: vault-agent
+      register: service_status
+      
+    - name: Display service status
+      ansible.builtin.debug:
+        msg: "Vault Agent is {{ service_status.status.ActiveState }} ({{ service_status.status.SubState }})"
+        
+    - name: Get recent logs
+      ansible.builtin.command: journalctl -u vault-agent -n 30 --no-pager
+      register: logs
+      changed_when: false
+      
+    - name: Display logs
+      ansible.builtin.debug:
+        msg: "{{ logs.stdout_lines }}"

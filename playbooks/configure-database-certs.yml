@@ -11,39 +11,18 @@
     domain: "{{ target_domain | default('hashicorp.local') }}"
     
   tasks:
-    - name: Check if Vault Agent config needs repair (from previous failed run)
-      ansible.builtin.shell: |
-        # Count opening and closing braces
-        OPEN=$(grep -o '{' /etc/vault.d/vault-agent-config.hcl | wc -l)
-        CLOSE=$(grep -o '}' /etc/vault.d/vault-agent-config.hcl | wc -l)
-        if [ "$OPEN" -ne "$CLOSE" ]; then
-          echo "CORRUPT"
-        else
-          echo "OK"
-        fi
-      register: config_check
-      changed_when: false
-      
-    - name: Remove corrupted PostgreSQL templates block if present
+    - name: Remove any existing PostgreSQL templates from Vault Agent config
       ansible.builtin.blockinfile:
         path: /etc/vault.d/vault-agent-config.hcl
         marker: "# {mark} ANSIBLE MANAGED - PostgreSQL Certificate Templates"
         state: absent
-      when: config_check.stdout == "CORRUPT"
-      
-    - name: Restore missing closing brace for CA template if needed
-      ansible.builtin.lineinfile:
-        path: /etc/vault.d/vault-agent-config.hcl
-        regexp: '^  error_on_missing_key = true$'
-        line: "  error_on_missing_key = true\n}"
-        backrefs: yes
-      when: config_check.stdout == "CORRUPT"
+      failed_when: false
       
     - name: Create PostgreSQL certificate renewal template
       ansible.builtin.copy:
         content: |
           {% raw %}{{- /* PostgreSQL Server Certificate Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}{% raw %},localhost" }}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %},localhost.localdomain,localhost" "ip_sans=127.0.0.1" }}
           {{ .Data.certificate }}
           {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/pgsql-cert-renewal.ctmpl
@@ -53,7 +32,7 @@
       ansible.builtin.copy:
         content: |
           {% raw %}{{- /* PostgreSQL Server Private Key Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}{% raw %},localhost" }}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %},localhost.localdomain,localhost" "ip_sans=127.0.0.1" }}
           {{ .Data.private_key }}
           {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/pgsql-key-renewal.ctmpl
@@ -63,13 +42,13 @@
       ansible.builtin.copy:
         content: |
           {% raw %}{{- /* PostgreSQL CA Certificate Chain Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" }}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %},localhost.localdomain,localhost" "ip_sans=127.0.0.1" }}
           {{ .Data.issuing_ca }}
           {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/pgsql-ca-renewal.ctmpl
         mode: '0644'
         
-    - name: Update Vault Agent configuration for PostgreSQL
+    - name: Add PostgreSQL certificate templates to Vault Agent config
       ansible.builtin.blockinfile:
         path: /etc/vault.d/vault-agent-config.hcl
         marker: "# {mark} ANSIBLE MANAGED - PostgreSQL Certificate Templates"
@@ -106,6 +85,24 @@
             command     = "/usr/bin/systemctl reload postgresql-15"
           }
       notify: Restart Vault Agent
+      
+    - name: Validate HCL syntax (brace count)
+      ansible.builtin.shell: |
+        OPEN=$(grep -o '{' /etc/vault.d/vault-agent-config.hcl | wc -l)
+        CLOSE=$(grep -o '}' /etc/vault.d/vault-agent-config.hcl | wc -l)
+        if [ "$OPEN" -ne "$CLOSE" ]; then
+          echo "ERROR: Brace mismatch - $OPEN opening vs $CLOSE closing"
+          exit 1
+        else
+          echo "OK: $OPEN opening braces match $CLOSE closing braces"
+          exit 0
+        fi
+      register: syntax_check
+      changed_when: false
+      
+    - name: Display syntax check result
+      ansible.builtin.debug:
+        msg: "{{ syntax_check.stdout }}"
       
     - name: Flush handlers to restart Vault Agent immediately
       ansible.builtin.meta: flush_handlers

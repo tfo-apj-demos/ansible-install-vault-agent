@@ -20,13 +20,18 @@
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
     vault_pki_role: "tls-auth"  # Hardcoded: Always use tls-auth for authentication certificates
-    target_hostname: "{{ hostvars[groups['all'][0]]['inventory_hostname'] }}"
-    remote_csr_data: "{{ hostvars[groups['all'][0]].vault_tpm_remote_csr_data_fact }}"
     domain: "{{ target_domain | default('hashicorp.local') }}"
     cert_dir: "/etc/ssl/private"
-  roles:
-    # Step 2: Sign CSR and get certificate from Vault
-    - vault_sign
+  tasks:
+    - name: Sign CSR for each target host
+      include_role:
+        name: vault_sign
+      vars:
+        target_hostname: "{{ item }}"
+        remote_csr_data: "{{ hostvars[item].vault_tpm_remote_csr_data_fact }}"
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
 
 - name: Install and configure Vault Agent with TLS authentication
   hosts: all

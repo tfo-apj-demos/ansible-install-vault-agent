@@ -32,6 +32,14 @@
         dest: /etc/vault.d/templates/app-client-key-renewal.ctmpl
         mode: '0644'
         
+    - name: Create scripts directory for Vault Agent
+      ansible.builtin.file:
+        path: /etc/vault.d/scripts
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+        
     - name: Create KV write-back script for EDA integration
       ansible.builtin.copy:
         content: |

@@ -13,7 +13,7 @@
     - name: Get current certificate fingerprint from database server
       shell: |
         openssl x509 -in /etc/vault.d/certs/server.crt -noout -fingerprint -sha256 | \
-        sed 's/SHA256 Fingerprint=//' | tr -d ':'
+        sed 's/.*Fingerprint=//' | tr -d ':'
       register: cert_fingerprint
       delegate_to: "{{ groups['db_server'][0] }}"
       changed_when: false

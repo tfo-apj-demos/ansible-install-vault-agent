@@ -16,7 +16,7 @@
       ansible.builtin.copy:
         content: |
           {% raw %}{{- /* Application Client Certificate Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" }}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %},localhost.localdomain,localhost" "ip_sans=127.0.0.1" }}
           {{ .Data.certificate }}
           {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/app-client-cert-renewal.ctmpl
@@ -26,7 +26,7 @@
       ansible.builtin.copy:
         content: |
           {% raw %}{{- /* Application Client Private Key Template */ -}}
-          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" }}
+          {{ with secret "pki/issue/server" "common_name={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %}" "ttl=90s" "alt_names={% endraw %}{{ inventory_hostname }}.{{ domain }}{% raw %},localhost.localdomain,localhost" "ip_sans=127.0.0.1" }}
           {{ .Data.private_key }}
           {{ end }}{% endraw %}
         dest: /etc/vault.d/templates/app-client-key-renewal.ctmpl
@@ -67,7 +67,7 @@
       ansible.builtin.blockinfile:
         path: /etc/vault.d/vault-agent-config.hcl
         marker: "# {mark} ANSIBLE MANAGED - Application Certificate Templates"
-        insertbefore: "^}"
+        insertafter: EOF
         block: |
           
           # Application Client Certificate

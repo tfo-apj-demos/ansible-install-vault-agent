@@ -1,0 +1,86 @@
+---
+- name: Update Java Certificate Pinning Fingerprint
+  hosts: web_servers
+  become: true
+  gather_facts: false
+  
+  vars:
+    java_app_path: /opt/java-pinned-client
+    properties_file: "{{ java_app_path }}/src/main/resources/application.properties"
+    service_name: java-pinned-client.service
+    
+  tasks:
+    - name: Get current certificate fingerprint from database server
+      shell: |
+        openssl x509 -in /etc/vault.d/certs/server.crt -noout -fingerprint -sha256 | \
+        sed 's/SHA256 Fingerprint=//' | tr -d ':'
+      register: cert_fingerprint
+      delegate_to: "{{ groups['database_servers'][0] }}"
+      changed_when: false
+
+    - name: Display detected fingerprint
+      debug:
+        msg: "New certificate fingerprint: {{ cert_fingerprint.stdout }}"
+
+    - name: Update pinned fingerprint in application.properties
+      lineinfile:
+        path: "{{ properties_file }}"
+        regexp: '^api\.pinned\.fingerprint='
+        line: "api.pinned.fingerprint={{ cert_fingerprint.stdout }}"
+        backup: true
+      register: config_updated
+
+    - name: Rebuild Java application JAR
+      shell: mvn clean package -DskipTests -q
+      args:
+        chdir: "{{ java_app_path }}"
+      when: config_updated.changed
+      register: maven_build
+
+    - name: Kill any processes on port 8080
+      shell: |
+        ss -tlnp | grep :8080 | awk '{print $6}' | grep -o 'pid=[0-9]*' | cut -d= -f2 | xargs kill -9 2>/dev/null || true
+      when: config_updated.changed
+      ignore_errors: true
+
+    - name: Wait for port 8080 to be free
+      wait_for:
+        port: 8080
+        state: stopped
+        timeout: 10
+      when: config_updated.changed
+      ignore_errors: true
+
+    - name: Restart Java pinned client service
+      systemd:
+        name: "{{ service_name }}"
+        state: restarted
+        daemon_reload: true
+      when: config_updated.changed
+
+    - name: Wait for Java application to start
+      wait_for:
+        port: 8080
+        state: started
+        timeout: 30
+
+    - name: Test connection with new pinned certificate
+      uri:
+        url: "http://localhost:8080/api/test"
+        return_content: true
+      register: api_test
+      retries: 3
+      delay: 2
+      until: api_test.status == 200
+
+    - name: Display API test result
+      debug:
+        msg: "{{ api_test.json }}"
+
+    - name: Verify connection success
+      assert:
+        that:
+          - api_test.json.status == "success"
+          - api_test.json.pinned_fingerprint == cert_fingerprint.stdout
+        success_msg: "✅ Certificate pinning updated successfully! Connection restored."
+        fail_msg: "❌ Certificate pinning update failed. Connection still broken."

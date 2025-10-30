@@ -22,6 +22,28 @@
       debug:
         msg: "New certificate fingerprint: {{ cert_fingerprint.stdout }}"
 
+    - name: Fix certificate permissions on database server
+      file:
+        path: "{{ item }}"
+        mode: '0644'
+      loop:
+        - /etc/vault.d/certs/server.crt
+        - /etc/vault.d/certs/server.key
+      delegate_to: "{{ groups['db_server'][0] }}"
+
+    - name: Ensure Flask API is running on database server
+      systemd:
+        name: flask-api.service
+        state: restarted
+      delegate_to: "{{ groups['db_server'][0] }}"
+
+    - name: Wait for Flask API to be ready
+      wait_for:
+        host: "{{ groups['db_server'][0] }}"
+        port: 5443
+        timeout: 10
+      delegate_to: "{{ groups['db_server'][0] }}"
+
     - name: Update pinned fingerprint in application.properties
       lineinfile:
         path: "{{ properties_file }}"

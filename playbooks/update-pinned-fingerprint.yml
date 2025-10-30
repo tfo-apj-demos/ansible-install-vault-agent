@@ -1,6 +1,6 @@
 ---
 - name: Update Java Certificate Pinning Fingerprint
-  hosts: web-server-01.hashicorp.local
+  hosts: web_server
   become: true
   gather_facts: false
   
@@ -8,7 +8,6 @@
     java_app_path: /opt/java-pinned-client
     properties_file: "{{ java_app_path }}/src/main/resources/application.properties"
     service_name: java-pinned-client.service
-    database_server: database-server-01.hashicorp.local
     
   tasks:
     - name: Get current certificate fingerprint from database server
@@ -16,7 +15,7 @@
         openssl x509 -in /etc/vault.d/certs/server.crt -noout -fingerprint -sha256 | \
         sed 's/SHA256 Fingerprint=//' | tr -d ':'
       register: cert_fingerprint
-      delegate_to: "{{ database_server }}"
+      delegate_to: "{{ groups['db_server'][0] }}"
       changed_when: false
 
     - name: Display detected fingerprint

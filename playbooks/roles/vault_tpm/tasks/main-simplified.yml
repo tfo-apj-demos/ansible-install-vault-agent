@@ -1,7 +1,8 @@
-# roles/vault_tpm/tasks/main.yml - Simplified version for demo
+# roles/vault_tpm/tasks/main-simplified.yml - Simplified version for demo
 ---
-# For demo purposes, we'll create a secure key without full TPM integration
-# This avoids package availability issues while maintaining security
+# Simplified mode: Software-based private key (NOT TPM-protected)
+# This creates a standard OpenSSL private key stored on disk
+# For hardware-backed keys, enable vTPM and use main-full-tpm.yml
 
 - name: Install basic dependencies
   ansible.builtin.package:
@@ -14,9 +15,9 @@
 # Create secure directory for keys
 - name: Create secure key directory
   ansible.builtin.file:
-    path: /root/vault-keys
+    path: /etc/vault.d
     state: directory
-    mode: "0700"
+    mode: "0755"
     owner: root
     group: root
 
@@ -26,35 +27,38 @@
     path: "{{ item }}"
     state: absent
   loop:
-    - /root/vault-keys/private-key.pem
-    - /root/vault-keys/csr.pem
+    - /etc/vault.d/private-key.pem
+    - /etc/vault.d/csr.pem
   when: vault_tpm_force_regenerate | default(false)
 
-# Generate a secure private key (simulating what TPM would do)
-- name: Generate secure private key
+# Generate a software-based private key (NOT TPM-protected)
+- name: Generate software-based private key using OpenSSL (NOT TPM-protected)
   ansible.builtin.command:
-    cmd: openssl genrsa -out /root/vault-keys/private-key.pem 2048
+    cmd: openssl genrsa -out /etc/vault.d/private-key.pem 2048
   args:
-    creates: "{{ '/root/vault-keys/private-key.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+    creates: "{{ '/etc/vault.d/private-key.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
 
 - name: Set secure permissions on private key
   ansible.builtin.file:
-    path: /root/vault-keys/private-key.pem
+    path: /etc/vault.d/private-key.pem
     mode: "0600"
     owner: root
     group: root
 
-# Generate CSR using the private key
-- name: Generate CSR using private key
+# Generate CSR using the software-based private key
+- name: Generate CSR using software-based private key
   ansible.builtin.command:
-    cmd: openssl req -new -key /root/vault-keys/private-key.pem -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" -out /root/vault-keys/csr.pem
+    cmd: >-
+      openssl req -new -key /etc/vault.d/private-key.pem
+      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+      -out /etc/vault.d/csr.pem
   args:
-    creates: "{{ '/root/vault-keys/csr.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+    creates: "{{ '/etc/vault.d/csr.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
 
 # Ensure CSR was created successfully
 - name: Check if CSR exists
   ansible.builtin.stat:
-    path: /root/vault-keys/csr.pem
+    path: /etc/vault.d/csr.pem
   register: vault_tpm_csr_stat
   failed_when: not vault_tpm_csr_stat.stat.exists
   changed_when: false
@@ -62,7 +66,7 @@
 # Read CSR content from remote host
 - name: Read CSR content from remote host
   ansible.builtin.slurp:
-    src: /root/vault-keys/csr.pem
+    src: /etc/vault.d/csr.pem
   register: vault_tpm_remote_csr_data
 
 # Validate CSR was read successfully
@@ -71,13 +75,19 @@
     msg: "Failed to read CSR file. Check file existence and permissions."
   when: vault_tpm_remote_csr_data.content is not defined or vault_tpm_remote_csr_data.content | length == 0
 
-# Set fact for other roles to use
-- name: Set remote CSR data as a fact
+# Set facts for other roles to use
+- name: Set remote CSR data and key metadata as facts
   ansible.builtin.set_fact:
     vault_tpm_remote_csr_data_fact: "{{ vault_tpm_remote_csr_data }}"
-    vault_tpm_private_key_path: "/root/vault-keys/private-key.pem"
+    vault_tpm_private_key_path: "/etc/vault.d/private-key.pem"
+    vault_tpm_key_type: "software"
 
-# Display success message
-- name: Display key generation success
+# Display success message with security notice
+- name: Display key generation summary and security notice
   ansible.builtin.debug:
-    msg: "Private key and CSR generated successfully for {{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+    msg:
+      - "✅ Private key and CSR generated for {{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+      - "⚠️  SECURITY NOTICE: Using simplified mode (software-based private key)"
+      - "Key location: /etc/vault.d/private-key.pem"
+      - "Protection: File permissions only (0600)"
+      - "For hardware-backed keys, enable vTPM and set vault_tpm_use_simplified: false"

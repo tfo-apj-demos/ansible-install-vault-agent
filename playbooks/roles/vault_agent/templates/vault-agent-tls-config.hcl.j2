@@ -11,7 +11,7 @@ auto_auth {
   method "cert" {
     config = {
       client_cert = "/etc/vault.d/cert.pem"
-      client_key  = "/etc/vault.d/tpm-private-key.pem"
+      client_key  = "{{ vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem') }}"
       reload      = true
     }
   }

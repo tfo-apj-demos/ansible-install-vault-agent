@@ -20,22 +20,20 @@
   when: connection_wait is succeeded
 
 - block:
-    # Copy the generated private key to Vault Agent directory
-    # Copy private key from where vault_tpm role created it
+    # Ensure private key is in correct location with correct permissions
+    # vault_tpm role creates it at /etc/vault.d/private-key.pem
     - name: Check if private key exists from vault_tpm role
       stat:
-        path: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/root/vault-keys/private-key.pem') }}"
+        path: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem') }}"
       register: private_key_stat
 
-    - name: Copy private key to Vault Agent directory
-      copy:
-        src: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/root/vault-keys/private-key.pem') }}"
-        dest: /etc/vault.d/tpm-private-key.pem
+    - name: Ensure private key has correct permissions
+      file:
+        path: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem') }}"
         mode: "0600"
         owner: root
         group: root
-        remote_src: yes
-      when: private_key_stat.stat.exists    # Copy the signed certificate from where vault_sign role placed it
+      when: private_key_stat.stat.exists
     - name: Check if signed certificate exists from vault_sign role
       stat:
         path: "{{ cert_dir | default('/etc/ssl/private') }}/cert.pem"
@@ -101,6 +99,15 @@
         daemon_reload: yes
         enabled: yes
         state: restarted
+
+    - name: Display TLS authentication setup summary
+      ansible.builtin.debug:
+        msg:
+          - "✅ TLS authentication configured for Vault Agent"
+          - "Certificate: /etc/vault.d/cert.pem"
+          - "Private key: {{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem') }}"
+          - "Key type: {{ (hostvars[inventory_hostname].vault_tpm_key_type | default('software')) | upper }}"
+          - "Security: {{ 'Hardware-backed (TPM)' if (hostvars[inventory_hostname].vault_tpm_key_type | default('software')) == 'tpm' else 'File permissions only (0600)' }}"
 
   when: connection_wait is succeeded
   rescue:

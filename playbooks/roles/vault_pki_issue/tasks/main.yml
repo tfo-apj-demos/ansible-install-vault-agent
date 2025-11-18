@@ -1,0 +1,175 @@
+---
+# roles/vault_pki_issue/tasks/main.yml
+#
+# Simple certificate issuance from Vault PKI engine
+# Runs on AAP Execution Environment (localhost) and copies certs to target
+# No agent, no complexity - just issue and place files!
+
+# ============================================================================
+# STEP 1: Verify Vault connectivity (from Execution Environment)
+# ============================================================================
+
+- name: "STEP 1/5: Verify Vault connectivity from Execution Environment"
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/health"
+    method: GET
+    return_content: true
+    validate_certs: true
+    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    status_code: [200, 473]  # Accept both active (200) and standby (473) nodes
+    follow_redirects: all
+  register: vault_health
+  retries: 3
+  delay: 5
+
+- name: Display Vault health status
+  ansible.builtin.debug:
+    msg: "✓ Vault connectivity verified from EE: {{ vault_health.json.version | default('unknown') }}"
+
+# ============================================================================
+# STEP 2: Issue certificate from Vault PKI (on Execution Environment)
+# ============================================================================
+
+- name: "STEP 2/5: Issue certificate from Vault PKI engine (Trusted Orchestrator)"
+  ansible.builtin.debug:
+    msg:
+      - "AAP Execution Environment issuing certificate as trusted orchestrator:"
+      - "  Target Machine: {{ target_hostname }}"
+      - "  Common Name: {{ cert_common_name }}"
+      - "  PKI Path: {{ vault_pki_path }}"
+      - "  PKI Role: {{ vault_pki_role }}"
+      - "  TTL: {{ cert_ttl }}"
+
+- name: Issue certificate from Vault
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    path: "{{ vault_pki_path }}/issue/{{ vault_pki_role }}"
+    data:
+      common_name: "{{ cert_common_name }}"
+      ttl: "{{ cert_ttl }}"
+    auth_method: approle
+    role_id: "{{ role_id }}"  # Provided by AAP credential
+    secret_id: "{{ secret_id }}"  # Provided by AAP credential
+    validate_certs: true
+    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  register: issued_cert
+
+- name: Display certificate issuance success
+  ansible.builtin.debug:
+    msg:
+      - "✓ Certificate issued successfully on Execution Environment!"
+      - "  Serial Number: {{ issued_cert.data.data.serial_number }}"
+      - "  Expiration: {{ issued_cert.data.data.expiration | default('N/A') }}"
+
+# ============================================================================
+# STEP 3: Ensure directories exist on target machine
+# ============================================================================
+
+- name: "STEP 3/5: Ensure certificate directories exist on target machine"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+    owner: root
+    group: root
+  loop:
+    - "/etc/pki/tls/certs"
+    - "/etc/pki/tls/private"
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
+# ============================================================================
+# STEP 4: Copy certificate files to target machine
+# ============================================================================
+
+- name: "STEP 4/5: Copy certificate files from EE to target machine"
+  ansible.builtin.debug:
+    msg:
+      - "Copying certificate files from Execution Environment to target:"
+      - "  Certificate: {{ cert_file_path }}"
+      - "  Private Key: {{ key_file_path }}"
+      - "  CA Bundle: {{ ca_file_path }}"
+      - "  Full Chain: {{ chain_file_path }}"
+
+- name: Write certificate file to target machine
+  ansible.builtin.copy:
+    content: "{{ issued_cert.data.data.certificate }}"
+    dest: "{{ cert_file_path }}"
+    mode: "0644"
+    owner: root
+    group: root
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
+- name: Write private key file to target machine
+  ansible.builtin.copy:
+    content: "{{ issued_cert.data.data.private_key }}"
+    dest: "{{ key_file_path }}"
+    mode: "0600"
+    owner: root
+    group: root
+  delegate_to: "{{ target_hostname }}"
+  become: true
+  no_log: true  # Don't log private key content
+
+- name: Write CA certificate file to target machine
+  ansible.builtin.copy:
+    content: "{{ issued_cert.data.data.issuing_ca }}"
+    dest: "{{ ca_file_path }}"
+    mode: "0644"
+    owner: root
+    group: root
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
+- name: Write full certificate chain file to target machine
+  ansible.builtin.copy:
+    content: "{{ issued_cert.data.data.ca_chain | join('\n') }}"
+    dest: "{{ chain_file_path }}"
+    mode: "0644"
+    owner: root
+    group: root
+  delegate_to: "{{ target_hostname }}"
+  become: true
+
+# ============================================================================
+# STEP 5: Display summary
+# ============================================================================
+
+- name: "STEP 5/5: Summary - Certificate deployment complete"
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════"
+      - "  PKI Certificate Issued Successfully!"
+      - "═══════════════════════════════════════════════════════════"
+      - ""
+      - "Certificate Details:"
+      - "  Common Name: {{ cert_common_name }}"
+      - "  Serial: {{ issued_cert.data.data.serial_number }}"
+      - "  Issuer: Vault PKI ({{ vault_pki_path }}/{{ vault_pki_role }})"
+      - ""
+      - "Target Machine: {{ target_hostname }}"
+      - "Files Created:"
+      - "  📄 Certificate: {{ cert_file_path }}"
+      - "  🔑 Private Key: {{ key_file_path }} (0600)"
+      - "  📋 CA Bundle: {{ ca_file_path }}"
+      - "  🔗 Full Chain: {{ chain_file_path }}"
+      - ""
+      - "Architecture Benefits:"
+      - "  ✓ AAP Execution Environment = Trusted Orchestrator"
+      - "  ✓ Target machines never authenticate to Vault directly"
+      - "  ✓ No Vault Agent installation required on targets"
+      - "  ✓ No background services to manage"
+      - "  ✓ Simple API call - credentials managed by AAP"
+      - ""
+      - "Why This Pattern Works:"
+      - "  • Solves the chicken-and-egg problem"
+      - "  • AAP manages Vault credentials centrally"
+      - "  • Target machines receive certificates securely via SSH"
+      - "  • Perfect for web servers and simple services"
+      - ""
+      - "Next Steps:"
+      - "  • Configure your web server to use these certificates"
+      - "  • Set up certificate rotation (run this playbook again)"
+      - "  • For auto-renewal, consider the Vault Agent approach"
+      - "═══════════════════════════════════════════════════════════"

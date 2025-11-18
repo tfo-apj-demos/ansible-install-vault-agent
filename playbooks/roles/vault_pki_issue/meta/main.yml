@@ -1,0 +1,15 @@
+---
+# Role metadata for vault_pki_issue
+dependencies: []
+
+galaxy_info:
+  role_name: vault_pki_issue
+  description: Simple certificate issuance from Vault PKI engine
+  author: TFO APJ Demos
+  license: MIT
+  min_ansible_version: "2.9"
+  platforms:
+    - name: EL
+      versions:
+        - 8
+        - 9

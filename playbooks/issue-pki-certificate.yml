@@ -1,0 +1,45 @@
+---
+# Simple PKI certificate issuance playbook
+# Demonstrates how easy it is to get certificates from Vault without agent complexity
+#
+# This playbook:
+# 1. Gathers target machine facts (FQDN)
+# 2. AAP Execution Environment authenticates to Vault (trusted orchestrator pattern)
+# 3. Issues certificate directly from the PKI engine
+# 4. Copies certificate files to target machine in standard RHEL locations
+#
+# No Vault Agent required on target machines!
+# AAP acts as the trusted bridge between Vault and target machines
+
+- name: Gather facts from target machines
+  hosts: all
+  become: true
+  gather_facts: true  # Need facts for FQDN (ansible_fqdn)
+  tasks:
+    - name: Display target machine FQDN
+      ansible.builtin.debug:
+        msg: "Target machine: {{ ansible_fqdn }}"
+
+- name: Issue PKI certificates via Vault (Execution Environment)
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
+    vault_pki_role: "server"  # Using 'server' role for application certificates
+    cert_ttl: "720h"  # 30 days (role defaults will apply if not specified)
+  tasks:
+    - name: Issue certificate for each target host
+      include_role:
+        name: vault_pki_issue
+      vars:
+        target_hostname: "{{ item }}"
+        cert_common_name: "{{ hostvars[item].ansible_fqdn }}"
+        # File paths on target machine (standard RHEL locations)
+        cert_file_path: "/etc/pki/tls/certs/{{ hostvars[item].ansible_fqdn }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ hostvars[item].ansible_fqdn }}.key"
+        ca_file_path: "/etc/pki/tls/certs/{{ hostvars[item].ansible_fqdn }}-ca.crt"
+        chain_file_path: "/etc/pki/tls/certs/{{ hostvars[item].ansible_fqdn }}-chain.crt"
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"

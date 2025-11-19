@@ -15,10 +15,14 @@
   hosts: all
   become: true
   gather_facts: true  # Need facts for FQDN (ansible_fqdn)
+  vars:
+    domain: "{{ target_domain | default('hashicorp.local') }}"
   tasks:
     - name: Display target machine FQDN
       ansible.builtin.debug:
-        msg: "Target machine: {{ ansible_fqdn }}"
+        msg: 
+          - "Target machine hostname: {{ inventory_hostname }}"
+          - "Target machine FQDN: {{ inventory_hostname }}.{{ domain }}"
 
 - name: Issue PKI certificates via Vault (Execution Environment)
   hosts: localhost
@@ -28,18 +32,19 @@
     vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
     vault_pki_role: "server"  # Using 'server' role for application certificates
     cert_ttl: "720h"  # 30 days (role defaults will apply if not specified)
+    domain: "{{ target_domain | default('hashicorp.local') }}"
   tasks:
     - name: Issue certificate for each target host
       include_role:
         name: vault_pki_issue
       vars:
         target_hostname: "{{ item }}"
-        cert_common_name: "{{ hostvars[item].ansible_fqdn }}"
+        cert_common_name: "{{ item }}.{{ domain }}"  # Use hostname + domain for FQDN
         # File paths on target machine (standard RHEL locations)
-        cert_file_path: "/etc/pki/tls/certs/{{ hostvars[item].ansible_fqdn }}.crt"
-        key_file_path: "/etc/pki/tls/private/{{ hostvars[item].ansible_fqdn }}.key"
-        ca_file_path: "/etc/pki/tls/certs/{{ hostvars[item].ansible_fqdn }}-ca.crt"
-        chain_file_path: "/etc/pki/tls/certs/{{ hostvars[item].ansible_fqdn }}-chain.crt"
+        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
+        ca_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-ca.crt"
+        chain_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-chain.crt"
       loop: "{{ groups['all'] }}"
       loop_control:
         label: "{{ item }}"

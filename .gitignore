@@ -1,0 +1,17 @@
+# Work in Progress / Scratch Notes
+work-in-progress/
+
+# Ansible
+*.retry
+*.log
+.ansible/
+ansible.cfg.bak
+
+# Ansible Galaxy
+.galaxy_install_info
+
+# Documentation drafts
+*-draft.md
+*-wip.md
+TODO.md
+NOTES.md

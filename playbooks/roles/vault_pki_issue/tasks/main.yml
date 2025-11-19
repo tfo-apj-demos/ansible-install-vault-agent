@@ -65,10 +65,6 @@
 # STEP 3: Ensure directories exist on target machine
 # ============================================================================
 
-- name: "STEP 3/5: Debug - Verify target hostname variable"
-  ansible.builtin.debug:
-    msg: "Target hostname for delegation: {{ target_hostname }}"
-
 - name: "STEP 3/5: Ensure certificate directories exist on target machine"
   ansible.builtin.file:
     path: "{{ cert_dir }}"

@@ -65,9 +65,13 @@
 # STEP 3: Ensure directories exist on target machine
 # ============================================================================
 
+- name: "STEP 3/5: Debug - Verify target hostname variable"
+  ansible.builtin.debug:
+    msg: "Target hostname for delegation: {{ target_hostname }}"
+
 - name: "STEP 3/5: Ensure certificate directories exist on target machine"
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "{{ cert_dir }}"
     state: directory
     mode: "0755"
     owner: root
@@ -75,6 +79,8 @@
   loop:
     - "/etc/pki/tls/certs"
     - "/etc/pki/tls/private"
+  loop_control:
+    loop_var: cert_dir
   delegate_to: "{{ target_hostname }}"
   become: true
 

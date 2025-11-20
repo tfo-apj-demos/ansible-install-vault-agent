@@ -41,7 +41,7 @@
   vars:
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     domain: "{{ target_domain | default('hashicorp.local') }}"
-    renewal_threshold: "{{ cert_renewal_threshold_days | default(7) }}"  # Renew if expiring within 7 days
+    renewal_threshold: "{{ cert_renewal_threshold_days | default(5) }}"  # Renew if expiring within 5 days
   tasks:
     - name: "═══════════════════════════════════════════════════════════"
       ansible.builtin.debug:

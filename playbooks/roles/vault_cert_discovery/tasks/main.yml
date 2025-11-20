@@ -1,0 +1,170 @@
+---
+# roles/vault_cert_discovery/tasks/main.yml
+#
+# Certificate Discovery and Inventory Role
+# Scans target machines for existing certificates and stores inventory in Vault KV
+# Determines if certificates need renewal based on expiry threshold
+
+# ============================================================================
+# STEP 1: Discover certificates on target machine
+# ============================================================================
+
+- name: "STEP 1/4: Discover existing certificates on {{ target_hostname }}"
+  ansible.builtin.debug:
+    msg:
+      - "Scanning {{ target_hostname }} for existing certificates"
+      - "  Certificate Path: {{ cert_file_path }}"
+      - "  Private Key Path: {{ key_file_path }}"
+
+- name: Check if certificate file exists on target
+  ansible.builtin.stat:
+    path: "{{ cert_file_path }}"
+  delegate_to: "{{ target_hostname }}"
+  become: true
+  register: cert_file_stat
+
+- name: Check if private key file exists on target
+  ansible.builtin.stat:
+    path: "{{ key_file_path }}"
+  delegate_to: "{{ target_hostname }}"
+  become: true
+  register: key_file_stat
+
+# ============================================================================
+# STEP 2: Parse certificate details (if exists)
+# ============================================================================
+
+- name: "STEP 2/4: Parse certificate details (if certificate exists)"
+  when: cert_file_stat.stat.exists
+  block:
+    - name: Extract certificate details using openssl
+      ansible.builtin.shell: |
+        # Get certificate details
+        SUBJECT=$(openssl x509 -in {{ cert_file_path }} -noout -subject -nameopt RFC2253 2>/dev/null | sed 's/subject=//')
+        CN=$(openssl x509 -in {{ cert_file_path }} -noout -subject -nameopt RFC2253 2>/dev/null | sed 's/.*CN=\([^,]*\).*/\1/')
+        SERIAL=$(openssl x509 -in {{ cert_file_path }} -noout -serial 2>/dev/null | sed 's/serial=//')
+        ISSUER=$(openssl x509 -in {{ cert_file_path }} -noout -issuer -nameopt RFC2253 2>/dev/null | sed 's/issuer=//')
+        NOT_BEFORE=$(openssl x509 -in {{ cert_file_path }} -noout -startdate 2>/dev/null | sed 's/notBefore=//')
+        NOT_AFTER=$(openssl x509 -in {{ cert_file_path }} -noout -enddate 2>/dev/null | sed 's/notAfter=//')
+
+        # Calculate days until expiry (portable for both Linux and macOS)
+        # Try Linux date command first, fallback to macOS if it fails
+        if EXPIRY_EPOCH=$(date -d "$NOT_AFTER" +%s 2>/dev/null); then
+          # Linux date command succeeded
+          CURRENT_EPOCH=$(date +%s)
+        else
+          # Try macOS date command
+          EXPIRY_EPOCH=$(date -j -f "%b %d %H:%M:%S %Y %Z" "$NOT_AFTER" +%s 2>/dev/null)
+          CURRENT_EPOCH=$(date +%s)
+        fi
+        DAYS_UNTIL_EXPIRY=$(( ($EXPIRY_EPOCH - $CURRENT_EPOCH) / 86400 ))
+
+        # Output as JSON for easy parsing
+        cat <<EOF
+        {
+          "subject": "$SUBJECT",
+          "common_name": "$CN",
+          "serial_number": "$SERIAL",
+          "issuer": "$ISSUER",
+          "not_before": "$NOT_BEFORE",
+          "not_after": "$NOT_AFTER",
+          "days_until_expiry": $DAYS_UNTIL_EXPIRY
+        }
+        EOF
+      delegate_to: "{{ target_hostname }}"
+      become: true
+      register: cert_details_raw
+      changed_when: false
+
+    - name: Parse certificate details JSON
+      ansible.builtin.set_fact:
+        cert_details: "{{ cert_details_raw.stdout | from_json }}"
+
+    - name: Display discovered certificate details
+      ansible.builtin.debug:
+        msg:
+          - "✓ Certificate found on {{ target_hostname }}:"
+          - "  Common Name: {{ cert_details.common_name }}"
+          - "  Serial: {{ cert_details.serial_number }}"
+          - "  Issuer: {{ cert_details.issuer }}"
+          - "  Expires: {{ cert_details.not_after }}"
+          - "  Days Until Expiry: {{ cert_details.days_until_expiry }}"
+
+    - name: Determine if renewal is needed
+      ansible.builtin.set_fact:
+        renewal_needed: "{{ cert_details.days_until_expiry | int <= renewal_threshold | int }}"
+
+    - name: Store renewal decision in global dictionary
+      ansible.builtin.set_fact:
+        cert_renewal_decisions: "{{ cert_renewal_decisions | default({}) | combine({ target_hostname: renewal_needed }) }}"
+
+    - name: Display renewal decision
+      ansible.builtin.debug:
+        msg: "{{ '⚠️  RENEWAL NEEDED - Certificate expires in ' + (cert_details.days_until_expiry | string) + ' days (threshold: ' + (renewal_threshold | string) + ' days)' if renewal_needed else '✓ Certificate valid - ' + (cert_details.days_until_expiry | string) + ' days remaining (no renewal needed)' }}"
+
+# ============================================================================
+# STEP 3: Store inventory in Vault KV (if certificate exists)
+# ============================================================================
+
+- name: "STEP 3/4: Store certificate inventory in Vault KV"
+  when: cert_file_stat.stat.exists
+  block:
+    - name: Prepare inventory data for Vault KV
+      ansible.builtin.set_fact:
+        cert_inventory:
+          hostname: "{{ target_hostname }}"
+          fqdn: "{{ cert_common_name }}"
+          certificates:
+            - path: "{{ cert_file_path }}"
+              key_path: "{{ key_file_path }}"
+              common_name: "{{ cert_details.common_name }}"
+              serial_number: "{{ cert_details.serial_number }}"
+              issuer: "{{ cert_details.issuer }}"
+              not_before: "{{ cert_details.not_before }}"
+              not_after: "{{ cert_details.not_after }}"
+              days_until_expiry: "{{ cert_details.days_until_expiry | int }}"
+              renewal_needed: "{{ renewal_needed }}"
+              last_scanned: "{{ ansible_date_time.iso8601 }}"
+
+    - name: Store certificate inventory in Vault KV (secrets/certificates/{{ target_hostname }})
+      community.hashi_vault.vault_write:
+        url: "{{ vault_addr }}"
+        path: "secrets/data/certificates/{{ target_hostname }}"
+        data:
+          data: "{{ cert_inventory }}"
+        auth_method: approle
+        role_id: "{{ role_id }}"
+        secret_id: "{{ secret_id }}"
+        validate_certs: true
+        ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+      register: kv_write_result
+
+    - name: Confirm inventory stored in Vault KV
+      ansible.builtin.debug:
+        msg: "✓ Certificate inventory stored in Vault: secrets/certificates/{{ target_hostname }}"
+
+# ============================================================================
+# STEP 4: Handle case when no certificate exists
+# ============================================================================
+
+- name: "STEP 4/4: Handle missing certificate"
+  when: not cert_file_stat.stat.exists
+  block:
+    - name: Display no certificate found
+      ansible.builtin.debug:
+        msg:
+          - "ℹ️  No certificate found on {{ target_hostname }}"
+          - "  Expected path: {{ cert_file_path }}"
+          - "  Will issue new certificate"
+
+    - name: Set renewal needed flag (new certificate required)
+      ansible.builtin.set_fact:
+        renewal_needed: true
+        cert_details:
+          common_name: "{{ cert_common_name }}"
+          days_until_expiry: 0
+          status: "missing"
+
+    - name: Store renewal decision in global dictionary (missing cert)
+      ansible.builtin.set_fact:
+        cert_renewal_decisions: "{{ cert_renewal_decisions | default({}) | combine({ target_hostname: true }) }}"

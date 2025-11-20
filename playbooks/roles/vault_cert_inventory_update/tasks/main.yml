@@ -1,0 +1,66 @@
+---
+# roles/vault_cert_inventory_update/tasks/main.yml
+#
+# Update certificate inventory in Vault KV after new certificate issuance
+# Called after vault_pki_issue role completes
+
+- name: "Update certificate inventory in Vault KV after issuance"
+  ansible.builtin.debug:
+    msg:
+      - "Updating certificate inventory for {{ target_hostname }}"
+      - "  Serial: {{ issued_cert.data.data.serial_number }}"
+      - "  Expiration: {{ issued_cert.data.data.expiration }}"
+
+- name: Calculate certificate expiry details
+  ansible.builtin.set_fact:
+    # Vault returns expiration as Unix timestamp
+    cert_expiration_timestamp: "{{ issued_cert.data.data.expiration }}"
+    cert_not_before: "{{ ansible_date_time.iso8601 }}"
+
+- name: Calculate days until expiry for newly issued certificate
+  ansible.builtin.shell: |
+    EXPIRY_EPOCH={{ cert_expiration_timestamp }}
+    CURRENT_EPOCH=$(date +%s)
+    DAYS_UNTIL_EXPIRY=$(( ($EXPIRY_EPOCH - $CURRENT_EPOCH) / 86400 ))
+    echo $DAYS_UNTIL_EXPIRY
+  register: days_calc
+  changed_when: false
+  delegate_to: localhost
+
+- name: Prepare updated inventory data
+  ansible.builtin.set_fact:
+    updated_cert_inventory:
+      hostname: "{{ target_hostname }}"
+      fqdn: "{{ cert_common_name }}"
+      certificates:
+        - path: "{{ cert_file_path }}"
+          key_path: "{{ key_file_path }}"
+          common_name: "{{ cert_common_name }}"
+          serial_number: "{{ issued_cert.data.data.serial_number }}"
+          issuer: "{{ issued_cert.data.data.issuing_ca.split('\n')[0] | default('Vault PKI') }}"
+          not_before: "{{ cert_not_before }}"
+          not_after_timestamp: "{{ cert_expiration_timestamp }}"
+          days_until_expiry: "{{ days_calc.stdout | int }}"
+          renewal_needed: false
+          last_issued: "{{ ansible_date_time.iso8601 }}"
+          issued_by_aap_job: "{{ tower_job_id | default('N/A') }}"
+
+- name: Update certificate inventory in Vault KV (secrets/certificates/{{ target_hostname }})
+  community.hashi_vault.vault_write:
+    url: "{{ vault_addr }}"
+    path: "secrets/data/certificates/{{ target_hostname }}"
+    data:
+      data: "{{ updated_cert_inventory }}"
+    auth_method: approle
+    role_id: "{{ role_id }}"
+    secret_id: "{{ secret_id }}"
+    validate_certs: true
+    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  register: kv_update_result
+
+- name: Confirm inventory updated in Vault KV
+  ansible.builtin.debug:
+    msg:
+      - "✓ Certificate inventory updated in Vault KV"
+      - "  Path: secrets/certificates/{{ target_hostname }}"
+      - "  Certificate valid for {{ days_calc.stdout }} days"

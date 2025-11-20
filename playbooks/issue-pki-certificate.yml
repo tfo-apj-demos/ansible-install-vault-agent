@@ -1,12 +1,20 @@
 ---
-# Simple PKI certificate issuance playbook
-# Demonstrates how easy it is to get certificates from Vault without agent complexity
+# Enhanced PKI certificate issuance playbook with discovery and lifecycle management
+#
+# Enterprise Certificate Lifecycle Management Features:
+# 1. Discovery: Scans target machines for existing certificates
+# 2. Inventory: Stores certificate metadata in Vault KV (secrets/certificates/{hostname})
+# 3. Automated Renewal: Only renews certificates expiring within threshold
+# 4. Auditing: Vault audit logs + AAP job execution logs
+# 5. Secure Credentials: AAP manages Vault credentials (AppRole)
 #
 # This playbook:
 # 1. Gathers target machine facts (FQDN)
-# 2. AAP Execution Environment authenticates to Vault (trusted orchestrator pattern)
-# 3. Issues certificate directly from the PKI engine
-# 4. Copies certificate files to target machine in standard RHEL locations
+# 2. Discovers existing certificates and checks expiry
+# 3. AAP Execution Environment authenticates to Vault (trusted orchestrator pattern)
+# 4. Issues certificate ONLY if needed (missing or expiring soon)
+# 5. Updates centralized inventory in Vault KV
+# 6. Copies certificate files to target machine in standard RHEL locations
 #
 # No Vault Agent required on target machines!
 # AAP acts as the trusted bridge between Vault and target machines
@@ -14,37 +22,139 @@
 - name: Gather facts from target machines
   hosts: all
   become: true
-  gather_facts: true  # Need facts for FQDN (ansible_fqdn)
+  gather_facts: true  # Need facts for FQDN (ansible_fqdn) and current time
   vars:
     domain: "{{ target_domain | default('hashicorp.local') }}"
   tasks:
     - name: Display target machine FQDN
       ansible.builtin.debug:
-        msg: 
+        msg:
+          - "═══════════════════════════════════════════════════════════"
+          - "  Certificate Lifecycle Management - Discovery Phase"
+          - "═══════════════════════════════════════════════════════════"
           - "Target machine hostname: {{ inventory_hostname }}"
           - "Target machine FQDN: {{ inventory_hostname }}.{{ domain }}"
 
-- name: Issue PKI certificates via Vault (Execution Environment)
+- name: Discover existing certificates and check renewal needs
+  hosts: localhost
+  gather_facts: true
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+    renewal_threshold: "{{ cert_renewal_threshold_days | default(7) }}"  # Renew if expiring within 7 days
+  tasks:
+    - name: "═══════════════════════════════════════════════════════════"
+      ansible.builtin.debug:
+        msg: "  PHASE 1: Certificate Discovery & Inventory"
+
+    - name: Discover certificates on each target host
+      include_role:
+        name: vault_cert_discovery
+      vars:
+        target_hostname: "{{ item }}"
+        cert_common_name: "{{ item }}.{{ domain }}"
+        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+- name: Issue PKI certificates via Vault (Execution Environment) - Conditional Renewal
   hosts: localhost
   gather_facts: false
   vars:
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
     vault_pki_role: "server"  # Using 'server' role for application certificates
-    cert_ttl: "720h"  # 30 days (role defaults will apply if not specified)
+    cert_ttl: "168h"  # 7 days (role max_ttl enforced)
     domain: "{{ target_domain | default('hashicorp.local') }}"
+    renewal_threshold: "{{ cert_renewal_threshold_days | default(7) }}"
   tasks:
-    - name: Issue certificate for each target host
+    - name: "═══════════════════════════════════════════════════════════"
+      ansible.builtin.debug:
+        msg: "  PHASE 2: Conditional Certificate Issuance"
+
+    - name: Issue or renew certificate for each target host (conditional)
       include_role:
         name: vault_pki_issue
       vars:
         target_hostname: "{{ item }}"
-        cert_common_name: "{{ item }}.{{ domain }}"  # Use hostname + domain for FQDN
+        cert_common_name: "{{ item }}.{{ domain }}"
         # File paths on target machine (standard RHEL locations)
         cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
         key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
         ca_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-ca.crt"
         chain_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-chain.crt"
+      # Only issue if renewal_needed was set to true in discovery phase for this host
+      when: cert_renewal_decisions[item] | default(true)
       loop: "{{ groups['all'] }}"
       loop_control:
         label: "{{ item }}"
+
+    - name: Update certificate inventory in Vault KV after issuance
+      include_role:
+        name: vault_cert_inventory_update
+      vars:
+        target_hostname: "{{ item }}"
+        cert_common_name: "{{ item }}.{{ domain }}"
+        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
+      when: cert_renewal_decisions[item] | default(true)
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+- name: Certificate Lifecycle Management - Summary Report
+  hosts: localhost
+  gather_facts: false
+  vars:
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+  tasks:
+    - name: "═══════════════════════════════════════════════════════════"
+      ansible.builtin.debug:
+        msg: "  PHASE 3: Certificate Lifecycle Summary Report"
+
+    - name: Display per-host certificate status
+      ansible.builtin.debug:
+        msg: "{{ '  🔄 RENEWED: ' + item + '.' + domain + ' (renewal required)' if cert_renewal_decisions[item] | default(true) else '  ✓ SKIPPED: ' + item + '.' + domain + ' (certificate still valid)' }}"
+      loop: "{{ groups['all'] }}"
+
+    - name: Display certificate lifecycle summary
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════"
+          - "  Certificate Lifecycle Management - Execution Complete"
+          - "═══════════════════════════════════════════════════════════"
+          - ""
+          - "Enterprise Features Demonstrated:"
+          - "  ✓ Discovery: Scanned {{ groups['all'] | length }} target machine(s)"
+          - "  ✓ Centralized Inventory: Stored in Vault KV (secrets/certificates/*)"
+          - "  ✓ Automated Renewal: Threshold = {{ cert_renewal_threshold_days | default(7) }} days"
+          - "  ✓ Conditional Issuance: Only renew expiring/missing certificates"
+          - "  ✓ Auditing: Vault audit logs + AAP job execution logs"
+          - "  ✓ Secure Credentials: AAP manages Vault AppRole credentials"
+          - "  ✓ Policy Enforcement: Vault PKI role constraints (max_ttl=7d, no wildcards)"
+          - ""
+          - "Vault KV Inventory Location:"
+          - "  View certificate inventory: vault kv get secrets/certificates/{hostname}"
+          - "  List all inventories: vault kv list secrets/certificates/"
+          - "  Example: vault kv get secrets/certificates/web-server-01"
+          - ""
+          - "What's NOT Covered (Gaps Requiring Additional Tools):"
+          - "  ⚠️  Real-time Dashboard → Consider Grafana + Vault KV API"
+          - "  ⚠️  Discovery of Unknown Locations → Consider Vault Radar or Venafi"
+          - "  ⚠️  Cloud Certificate Discovery → Multi-cloud scanning tools"
+          - "  ⚠️  Proactive Alerting → Prometheus/Alertmanager integration"
+          - ""
+          - "Recommended Tools for Enterprise Certificate Management:"
+          - "  • HashiCorp Vault Radar - Purpose-built secrets/cert discovery"
+          - "  • Venafi TLS Protect - Enterprise cert lifecycle platform"
+          - "  • Grafana + Prometheus - Monitoring and alerting dashboard"
+          - "  • Custom Integration - Vault KV API + your preferred SIEM/monitoring"
+          - ""
+          - "Next Steps:"
+          - "  • Schedule this playbook in AAP (daily/weekly for auto-renewal)"
+          - "  • Integrate with monitoring/alerting (Prometheus, Grafana)"
+          - "  • Consider Vault Radar for advanced discovery across cloud/on-prem"
+          - "  • Configure Vault audit device to stream to SIEM (Splunk, ELK)"
+          - "═══════════════════════════════════════════════════════════"

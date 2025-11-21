@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(terraform-test)",
+      "Skill(hcp-terraform-skills:terraform-test)",
+      "Bash(terraform version:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

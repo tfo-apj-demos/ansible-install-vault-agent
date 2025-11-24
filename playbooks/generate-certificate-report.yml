@@ -1,0 +1,100 @@
+---
+# Certificate Lifecycle Report Generator
+#
+# This playbook queries Vault KV for all certificate inventory data
+# and generates comprehensive reports for ops and compliance teams.
+#
+# Features:
+# - HTML dashboard with visual stats and sortable table
+# - JSON export for Grafana/Prometheus integration
+# - Compliance status tracking (HEALTHY/WARNING/CRITICAL/EXPIRED)
+# - Expiry timeline for upcoming renewals
+#
+# Usage:
+#   ansible-playbook playbooks/generate-certificate-report.yml \
+#     -e vault_server_address=https://vault.example.com:8200 \
+#     -e report_output_dir=/var/www/html/reports
+#
+# Output:
+#   - HTML Report: /tmp/vault-cert-reports/certificate-report-latest.html
+#   - JSON Report: /tmp/vault-cert-reports/certificate-report-latest.json
+
+- name: Generate Certificate Lifecycle Report
+  hosts: localhost
+  gather_facts: true
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    vault_kv_mount: "secrets"
+    vault_certificates_path: "certificates"
+
+    # Report output configuration
+    report_output_dir: "{{ lookup('env', 'HOME') }}/vault-cert-reports"
+    report_format: "both"  # Options: html, json, both
+
+    # Compliance thresholds (days)
+    cert_warning_days: 30   # Yellow alert
+    cert_critical_days: 7   # Red alert
+    cert_expired_days: 0    # Already expired
+
+    # Report sections
+    include_summary_stats: true
+    include_certificate_table: true
+    include_expiry_timeline: true
+    include_compliance_section: true
+
+  tasks:
+    - name: Display playbook information
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════"
+          - "  Certificate Lifecycle Report Generator"
+          - "═══════════════════════════════════════════════════════════"
+          - "This playbook generates comprehensive certificate reports from Vault KV"
+          - ""
+          - "Configuration:"
+          - "  Vault Server: {{ vault_addr }}"
+          - "  KV Path: {{ vault_kv_mount }}/{{ vault_certificates_path }}/"
+          - "  Output Directory: {{ report_output_dir }}"
+          - "  Report Format: {{ report_format }}"
+          - ""
+          - "Compliance Thresholds:"
+          - "  🟡 Warning: < {{ cert_warning_days }} days"
+          - "  🟠 Critical: < {{ cert_critical_days }} days"
+          - "  🔴 Expired: Already expired"
+          - ""
+          - "Generating reports..."
+          - "═══════════════════════════════════════════════════════════"
+
+    - name: Generate certificate reports from Vault KV
+      include_role:
+        name: vault_cert_report
+
+    - name: Display next steps
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "═══════════════════════════════════════════════════════════"
+          - "  Report Generation Complete!"
+          - "═══════════════════════════════════════════════════════════"
+          - ""
+          - "📊 Reports Generated:"
+          - "  HTML Dashboard: {{ report_output_dir }}/certificate-report-latest.html"
+          - "  JSON Data: {{ report_output_dir }}/certificate-report-latest.json"
+          - ""
+          - "🖥️  View HTML Report:"
+          - "  open {{ report_output_dir }}/certificate-report-latest.html"
+          - ""
+          - "📈 For Grafana Integration:"
+          - "  1. Use JSON report as data source"
+          - "  2. Set up Prometheus exporter (next phase)"
+          - "  3. Configure Grafana dashboard with alerts"
+          - ""
+          - "🔄 Automation Options:"
+          - "  • Schedule in AAP (daily/weekly)"
+          - "  • Cron job: 0 8 * * * ansible-playbook generate-certificate-report.yml"
+          - "  • Integrate with monitoring pipeline"
+          - ""
+          - "🚨 Action Required (if any):"
+          - "  Review HTML report for CRITICAL/EXPIRED certificates"
+          - "  Run: ansible-playbook playbooks/issue-pki-certificate.yml"
+          - "═══════════════════════════════════════════════════════════"

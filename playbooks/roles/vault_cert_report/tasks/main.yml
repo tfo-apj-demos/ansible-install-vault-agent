@@ -1,0 +1,221 @@
+---
+# roles/vault_cert_report/tasks/main.yml
+#
+# Certificate Reporting Role
+# Queries Vault KV for all certificate inventory and generates reports
+
+# ============================================================================
+# STEP 1: List all certificate inventories from Vault KV
+# ============================================================================
+
+- name: "STEP 1/6: Query Vault KV for certificate inventory list"
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════"
+      - "  Certificate Lifecycle Report Generator"
+      - "═══════════════════════════════════════════════════════════"
+      - "Querying Vault KV for all certificate inventories..."
+      - "  KV Path: {{ vault_kv_mount }}/metadata/{{ vault_certificates_path }}/"
+
+- name: List all certificate inventory keys from Vault KV
+  community.hashi_vault.vault_list:
+    url: "{{ vault_addr }}"
+    path: "{{ vault_kv_mount }}/metadata/{{ vault_certificates_path }}"
+    auth_method: approle
+    role_id: "{{ role_id }}"
+    secret_id: "{{ secret_id }}"
+    validate_certs: true
+    ca_cert: "{{ vault_ca_cert }}"
+  register: cert_inventory_list
+  retries: 3
+  delay: 2
+
+- name: Display discovered certificate inventories
+  ansible.builtin.debug:
+    msg:
+      - "✓ Found {{ cert_inventory_list.data.keys | default([]) | length }} certificate inventory entries"
+      - "  Hostnames: {{ cert_inventory_list.data.keys | default([]) | join(', ') }}"
+
+# ============================================================================
+# STEP 2: Retrieve detailed inventory for each certificate
+# ============================================================================
+
+- name: "STEP 2/6: Retrieve certificate details from Vault KV"
+  ansible.builtin.debug:
+    msg: "Fetching detailed certificate inventory for each host..."
+
+- name: Read certificate inventory data for each host
+  community.hashi_vault.vault_read:
+    url: "{{ vault_addr }}"
+    path: "{{ vault_kv_mount }}/data/{{ vault_certificates_path }}/{{ item }}"
+    auth_method: approle
+    role_id: "{{ role_id }}"
+    secret_id: "{{ secret_id }}"
+    validate_certs: true
+    ca_cert: "{{ vault_ca_cert }}"
+  loop: "{{ cert_inventory_list.data.keys | default([]) }}"
+  register: cert_inventories_raw
+  when: cert_inventory_list.data.keys | default([]) | length > 0
+
+# ============================================================================
+# STEP 3: Process and enrich certificate data
+# ============================================================================
+
+- name: "STEP 3/6: Process certificate data and calculate metrics"
+  ansible.builtin.set_fact:
+    certificates_processed: []
+    total_certificates: 0
+    certs_expired: 0
+    certs_critical: 0
+    certs_warning: 0
+    certs_healthy: 0
+
+- name: Build enriched certificate list with compliance status
+  ansible.builtin.set_fact:
+    certificates_processed: "{{ certificates_processed + [item.data.data.data | combine({'compliance_status': compliance_status, 'hostname': item.item})] }}"
+    total_certificates: "{{ total_certificates | int + 1 }}"
+    certs_expired: "{{ certs_expired | int + 1 if days_until_expiry <= cert_expired_days else certs_expired | int }}"
+    certs_critical: "{{ certs_critical | int + 1 if days_until_expiry > cert_expired_days and days_until_expiry <= cert_critical_days else certs_critical | int }}"
+    certs_warning: "{{ certs_warning | int + 1 if days_until_expiry > cert_critical_days and days_until_expiry <= cert_warning_days else certs_warning | int }}"
+    certs_healthy: "{{ certs_healthy | int + 1 if days_until_expiry > cert_warning_days else certs_healthy | int }}"
+  vars:
+    cert_data: "{{ item.data.data.data }}"
+    days_until_expiry: "{{ cert_data.certificates[0].days_until_expiry | int }}"
+    compliance_status: >-
+      {% if days_until_expiry <= cert_expired_days %}EXPIRED{% elif days_until_expiry <= cert_critical_days %}CRITICAL{% elif days_until_expiry <= cert_warning_days %}WARNING{% else %}HEALTHY{% endif %}
+  loop: "{{ cert_inventories_raw.results }}"
+  when:
+    - cert_inventories_raw is defined
+    - cert_inventories_raw.results is defined
+    - item.data is defined
+    - item.data.data is defined
+    - item.data.data.data is defined
+
+- name: Display processing summary
+  ansible.builtin.debug:
+    msg:
+      - "✓ Processed {{ total_certificates }} certificate(s)"
+      - "  EXPIRED: {{ certs_expired }}"
+      - "  CRITICAL (< {{ cert_critical_days }} days): {{ certs_critical }}"
+      - "  WARNING (< {{ cert_warning_days }} days): {{ certs_warning }}"
+      - "  HEALTHY: {{ certs_healthy }}"
+
+# ============================================================================
+# STEP 4: Generate timestamp and prepare report metadata
+# ============================================================================
+
+- name: "STEP 4/6: Prepare report metadata"
+  ansible.builtin.set_fact:
+    report_timestamp: "{{ ansible_date_time.iso8601 }}"
+    report_timestamp_human: "{{ ansible_date_time.date }} {{ ansible_date_time.time }} {{ ansible_date_time.tz }}"
+    report_json_filename: "{{ report_output_dir }}/{{ report_filename_prefix }}-{{ ansible_date_time.epoch }}.json"
+    report_html_filename: "{{ report_output_dir }}/{{ report_filename_prefix }}-{{ ansible_date_time.epoch }}.html"
+    report_latest_json: "{{ report_output_dir }}/{{ report_filename_prefix }}-latest.json"
+    report_latest_html: "{{ report_output_dir }}/{{ report_filename_prefix }}-latest.html"
+
+- name: Ensure report output directory exists
+  ansible.builtin.file:
+    path: "{{ report_output_dir }}"
+    state: directory
+    mode: "0755"
+
+# ============================================================================
+# STEP 5: Generate JSON report
+# ============================================================================
+
+- name: "STEP 5/6: Generate JSON report"
+  when: report_format in ['json', 'both']
+  block:
+    - name: Build JSON report structure
+      ansible.builtin.set_fact:
+        json_report:
+          metadata:
+            report_generated: "{{ report_timestamp }}"
+            report_generated_human: "{{ report_timestamp_human }}"
+            total_certificates: "{{ total_certificates | int }}"
+            vault_server: "{{ vault_addr }}"
+          summary:
+            expired: "{{ certs_expired | int }}"
+            critical: "{{ certs_critical | int }}"
+            warning: "{{ certs_warning | int }}"
+            healthy: "{{ certs_healthy | int }}"
+          thresholds:
+            warning_days: "{{ cert_warning_days | int }}"
+            critical_days: "{{ cert_critical_days | int }}"
+          certificates: "{{ certificates_processed }}"
+
+    - name: Write JSON report to file
+      ansible.builtin.copy:
+        content: "{{ json_report | to_nice_json }}"
+        dest: "{{ report_json_filename }}"
+        mode: "0644"
+
+    - name: Create symlink to latest JSON report
+      ansible.builtin.file:
+        src: "{{ report_json_filename }}"
+        dest: "{{ report_latest_json }}"
+        state: link
+        force: true
+
+    - name: Display JSON report location
+      ansible.builtin.debug:
+        msg:
+          - "✓ JSON report generated:"
+          - "  File: {{ report_json_filename }}"
+          - "  Latest: {{ report_latest_json }}"
+
+# ============================================================================
+# STEP 6: Generate HTML report
+# ============================================================================
+
+- name: "STEP 6/6: Generate HTML report"
+  when: report_format in ['html', 'both']
+  block:
+    - name: Generate HTML report from template
+      ansible.builtin.template:
+        src: certificate_report.html.j2
+        dest: "{{ report_html_filename }}"
+        mode: "0644"
+
+    - name: Create symlink to latest HTML report
+      ansible.builtin.file:
+        src: "{{ report_html_filename }}"
+        dest: "{{ report_latest_html }}"
+        state: link
+        force: true
+
+    - name: Display HTML report location
+      ansible.builtin.debug:
+        msg:
+          - "✓ HTML report generated:"
+          - "  File: {{ report_html_filename }}"
+          - "  Latest: {{ report_latest_html }}"
+
+# ============================================================================
+# Final Summary
+# ============================================================================
+
+- name: Display report generation summary
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════"
+      - "  Certificate Report Generation Complete"
+      - "═══════════════════════════════════════════════════════════"
+      - ""
+      - "Report Summary:"
+      - "  Total Certificates: {{ total_certificates }}"
+      - "  🔴 EXPIRED: {{ certs_expired }}"
+      - "  🟠 CRITICAL (< {{ cert_critical_days }} days): {{ certs_critical }}"
+      - "  🟡 WARNING (< {{ cert_warning_days }} days): {{ certs_warning }}"
+      - "  🟢 HEALTHY (> {{ cert_warning_days }} days): {{ certs_healthy }}"
+      - ""
+      - "Generated Reports:"
+      - "  {% if report_format in ['json', 'both'] %}📊 JSON: {{ report_latest_json }}{% endif %}"
+      - "  {% if report_format in ['html', 'both'] %}📄 HTML: {{ report_latest_html }}{% endif %}"
+      - ""
+      - "Next Steps:"
+      - "  • Open HTML report in browser for visual dashboard"
+      - "  • Use JSON report for API/Grafana integration"
+      - "  • Schedule this playbook for automated reporting"
+      - "  • Configure alerts for CRITICAL/EXPIRED certificates"
+      - "═══════════════════════════════════════════════════════════"

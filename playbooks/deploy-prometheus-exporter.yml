@@ -1,0 +1,88 @@
+---
+# Deploy Vault Certificate Prometheus Exporter
+#
+# This playbook deploys a Prometheus exporter that exposes certificate
+# metrics from Vault KV for Grafana/Prometheus monitoring.
+#
+# Features:
+# - Runs as systemd service
+# - Exposes metrics on :9090/metrics
+# - Automatic cache refresh
+# - Health check endpoint
+#
+# Usage:
+#   ansible-playbook playbooks/deploy-prometheus-exporter.yml \
+#     -e vault_server_address=https://vault.example.com:8200 \
+#     -e target_host=monitoring-server
+#
+# Requirements:
+#   - Python3 installed on target host
+#   - Vault AppRole credentials (role_id, secret_id) in AAP
+#   - Network connectivity to Vault server
+
+- name: Deploy Vault Certificate Prometheus Exporter
+  hosts: "{{ target_host | default('localhost') }}"
+  become: true
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    vault_ca_cert_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+
+    # Exporter configuration
+    exporter_port: 9090
+    exporter_cache_duration: 60
+    exporter_log_level: "INFO"
+
+    # Certificate thresholds
+    cert_warning_days: 30
+    cert_critical_days: 7
+
+  tasks:
+    - name: Display deployment information
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════"
+          - "  Vault Certificate Prometheus Exporter - Deployment"
+          - "═══════════════════════════════════════════════════════════"
+          - "Deploying exporter to: {{ inventory_hostname }}"
+          - ""
+          - "Configuration:"
+          - "  Vault Server: {{ vault_addr }}"
+          - "  Exporter Port: {{ exporter_port }}"
+          - "  Cache Duration: {{ exporter_cache_duration }}s"
+          - "  Warning Threshold: {{ cert_warning_days }} days"
+          - "  Critical Threshold: {{ cert_critical_days }} days"
+          - ""
+          - "Deploying exporter service..."
+          - "═══════════════════════════════════════════════════════════"
+
+    - name: Deploy Vault Certificate Prometheus Exporter
+      include_role:
+        name: vault_prometheus_exporter
+
+    - name: Display Prometheus configuration example
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "═══════════════════════════════════════════════════════════"
+          - "  Prometheus Configuration Example"
+          - "═══════════════════════════════════════════════════════════"
+          - ""
+          - "Add this to your prometheus.yml:"
+          - ""
+          - "scrape_configs:"
+          - "  - job_name: 'vault-certificates'"
+          - "    scrape_interval: 60s"
+          - "    static_configs:"
+          - "      - targets:"
+          - "          - '{{ ansible_default_ipv4.address | default('localhost') }}:{{ exporter_port }}'"
+          - "    relabel_configs:"
+          - "      - source_labels: [__address__]"
+          - "        target_label: instance"
+          - "        replacement: 'vault-cert-exporter'"
+          - ""
+          - "Then reload Prometheus:"
+          - "  systemctl reload prometheus"
+          - ""
+          - "Verify scrape target:"
+          - "  curl http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ exporter_port }}/metrics"
+          - "═══════════════════════════════════════════════════════════"

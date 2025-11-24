@@ -1,0 +1,8 @@
+---
+# roles/vault_prometheus_exporter/handlers/main.yml
+
+- name: restart vault-cert-exporter
+  ansible.builtin.systemd:
+    name: "{{ exporter_service_name }}"
+    state: restarted
+  become: true

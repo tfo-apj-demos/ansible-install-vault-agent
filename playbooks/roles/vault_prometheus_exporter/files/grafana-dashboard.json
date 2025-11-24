@@ -1,0 +1,387 @@
+{
+  "dashboard": {
+    "title": "Vault Certificate Lifecycle Dashboard",
+    "tags": ["vault", "certificates", "pki", "security"],
+    "timezone": "browser",
+    "schemaVersion": 16,
+    "version": 1,
+    "refresh": "1m",
+    "time": {
+      "from": "now-6h",
+      "to": "now"
+    },
+    "panels": [
+      {
+        "id": 1,
+        "title": "Certificate Overview",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 0,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "vault_certificates_total",
+            "legendFormat": "Total Certificates",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "blue"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background",
+          "graphMode": "none",
+          "textMode": "value_and_name"
+        }
+      },
+      {
+        "id": 2,
+        "title": "Healthy Certificates",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 6,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "vault_certificates_by_status{status=\"healthy\"}",
+            "legendFormat": "Healthy",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background"
+        }
+      },
+      {
+        "id": 3,
+        "title": "Warning Certificates",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 12,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "vault_certificates_by_status{status=\"warning\"}",
+            "legendFormat": "Warning",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "yellow"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background"
+        }
+      },
+      {
+        "id": 4,
+        "title": "Critical/Expired Certificates",
+        "type": "stat",
+        "gridPos": {
+          "h": 4,
+          "w": 6,
+          "x": 18,
+          "y": 0
+        },
+        "targets": [
+          {
+            "expr": "vault_certificates_by_status{status=\"critical\"} + vault_certificates_by_status{status=\"expired\"}",
+            "legendFormat": "Critical + Expired",
+            "refId": "A"
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "green"},
+                {"value": 1, "color": "red"}
+              ]
+            }
+          }
+        },
+        "options": {
+          "colorMode": "background"
+        }
+      },
+      {
+        "id": 5,
+        "title": "Certificate Status Distribution",
+        "type": "piechart",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 0,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "vault_certificates_by_status",
+            "legendFormat": "{{status}}",
+            "refId": "A"
+          }
+        ],
+        "options": {
+          "legend": {
+            "displayMode": "table",
+            "placement": "right",
+            "values": ["value", "percent"]
+          },
+          "pieType": "donut"
+        }
+      },
+      {
+        "id": 6,
+        "title": "Days Until Expiry",
+        "type": "graph",
+        "gridPos": {
+          "h": 8,
+          "w": 12,
+          "x": 12,
+          "y": 4
+        },
+        "targets": [
+          {
+            "expr": "vault_certificate_days_until_expiry",
+            "legendFormat": "{{hostname}} ({{cn}})",
+            "refId": "A"
+          }
+        ],
+        "yaxes": [
+          {
+            "label": "Days",
+            "show": true
+          },
+          {
+            "show": false
+          }
+        ],
+        "xaxis": {
+          "mode": "time",
+          "show": true
+        },
+        "legend": {
+          "show": true,
+          "alignAsTable": true,
+          "avg": false,
+          "current": true,
+          "max": false,
+          "min": false,
+          "rightSide": false,
+          "total": false,
+          "values": true
+        },
+        "thresholds": [
+          {
+            "value": 7,
+            "colorMode": "critical",
+            "op": "lt",
+            "fill": true,
+            "line": true
+          },
+          {
+            "value": 30,
+            "colorMode": "warning",
+            "op": "lt",
+            "fill": false,
+            "line": true
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "Certificate Expiry Timeline (Table)",
+        "type": "table",
+        "gridPos": {
+          "h": 10,
+          "w": 24,
+          "x": 0,
+          "y": 12
+        },
+        "targets": [
+          {
+            "expr": "vault_certificate_days_until_expiry",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "instance": true,
+                "job": true
+              },
+              "indexByName": {
+                "hostname": 0,
+                "cn": 1,
+                "serial": 2,
+                "Value": 3
+              },
+              "renameByName": {
+                "hostname": "Hostname",
+                "cn": "Common Name",
+                "serial": "Serial Number",
+                "Value": "Days Until Expiry"
+              }
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "color-background"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 7, "color": "orange"},
+                {"value": 30, "color": "yellow"},
+                {"value": 31, "color": "green"}
+              ]
+            }
+          },
+          "overrides": [
+            {
+              "matcher": {"id": "byName", "options": "Days Until Expiry"},
+              "properties": [
+                {
+                  "id": "custom.displayMode",
+                  "value": "color-background"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      {
+        "id": 8,
+        "title": "Certificates Expiring Soon (< 30 days)",
+        "type": "table",
+        "gridPos": {
+          "h": 8,
+          "w": 24,
+          "x": 0,
+          "y": 22
+        },
+        "targets": [
+          {
+            "expr": "vault_certificate_days_until_expiry < 30",
+            "format": "table",
+            "instant": true,
+            "refId": "A"
+          }
+        ],
+        "transformations": [
+          {
+            "id": "organize",
+            "options": {
+              "excludeByName": {
+                "Time": true,
+                "__name__": true,
+                "instance": true,
+                "job": true
+              },
+              "indexByName": {
+                "hostname": 0,
+                "cn": 1,
+                "Value": 2
+              },
+              "renameByName": {
+                "hostname": "Hostname",
+                "cn": "Common Name",
+                "Value": "Days Until Expiry"
+              }
+            }
+          },
+          {
+            "id": "sortBy",
+            "options": {
+              "fields": {},
+              "sort": [
+                {
+                  "field": "Days Until Expiry",
+                  "desc": false
+                }
+              ]
+            }
+          }
+        ],
+        "fieldConfig": {
+          "defaults": {
+            "custom": {
+              "align": "left",
+              "displayMode": "color-background"
+            },
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {"value": 0, "color": "red"},
+                {"value": 7, "color": "orange"},
+                {"value": 30, "color": "yellow"}
+              ]
+            }
+          }
+        }
+      }
+    ],
+    "templating": {
+      "list": []
+    },
+    "annotations": {
+      "list": [
+        {
+          "datasource": "Prometheus",
+          "enable": true,
+          "expr": "ALERTS{alertname=\"CertificateExpiringSoon\"}",
+          "name": "Certificate Alerts",
+          "step": "60s",
+          "tagKeys": "hostname,cn",
+          "textFormat": "Certificate {{hostname}} expiring soon",
+          "titleFormat": "Certificate Alert"
+        }
+      ]
+    }
+  },
+  "overwrite": false
+}

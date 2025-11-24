@@ -1,0 +1,28 @@
+---
+# roles/vault_cert_report/defaults/main.yml
+#
+# Default variables for certificate reporting role
+
+# Vault connection settings
+vault_addr: "https://vault.hashicorp.local:8200"
+vault_ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+
+# Vault KV paths
+vault_kv_mount: "secrets"
+vault_certificates_path: "certificates"
+
+# Report output settings
+report_output_dir: "/tmp/vault-cert-reports"
+report_format: "both"  # Options: html, json, both
+report_filename_prefix: "certificate-report"
+
+# Alerting thresholds for compliance
+cert_warning_days: 30   # Yellow alert if expiring within 30 days
+cert_critical_days: 7   # Red alert if expiring within 7 days
+cert_expired_days: 0    # Critical if already expired
+
+# Report sections to include
+include_summary_stats: true
+include_certificate_table: true
+include_expiry_timeline: true
+include_compliance_section: true

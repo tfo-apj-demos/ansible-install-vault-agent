@@ -1,0 +1,41 @@
+[Unit]
+Description=Vault Certificate Prometheus Exporter
+Documentation=https://github.com/your-org/ansible-install-vault-agent
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ exporter_user }}
+Group={{ exporter_group }}
+ExecStart=/usr/bin/python3 {{ exporter_install_dir }}/vault_cert_exporter.py \
+    --vault-addr {{ vault_addr }} \
+    --ca-cert {{ vault_ca_cert_path }} \
+    --port {{ exporter_port }} \
+    --cache-duration {{ exporter_cache_duration }} \
+    --warning-days {{ cert_warning_days }} \
+    --critical-days {{ cert_critical_days }} \
+    --log-level {{ exporter_log_level }}
+
+# Environment variables for Vault credentials (managed by AAP)
+Environment="VAULT_ROLE_ID={{ role_id }}"
+Environment="VAULT_SECRET_ID={{ secret_id }}"
+
+# Security hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths={{ exporter_install_dir }}
+
+# Restart policy
+Restart=on-failure
+RestartSec=10s
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=vault-cert-exporter
+
+[Install]
+WantedBy=multi-user.target

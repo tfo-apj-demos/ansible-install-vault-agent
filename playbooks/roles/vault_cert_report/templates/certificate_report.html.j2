@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Certificate Lifecycle Report - {{ report_timestamp_human }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: white;
+            padding: 30px 40px;
+            border-bottom: 4px solid #667eea;
+        }
+
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .header .meta {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .header .meta span {
+            margin-right: 20px;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            padding: 30px 40px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+            border-left: 4px solid;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+        }
+
+        .stat-card.total { border-left-color: #6c757d; }
+        .stat-card.healthy { border-left-color: #28a745; }
+        .stat-card.warning { border-left-color: #ffc107; }
+        .stat-card.critical { border-left-color: #fd7e14; }
+        .stat-card.expired { border-left-color: #dc3545; }
+
+        .stat-card .label {
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #6c757d;
+            margin-bottom: 8px;
+            font-weight: 600;
+        }
+
+        .stat-card .value {
+            font-size: 36px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        .stat-card.total .value { color: #6c757d; }
+        .stat-card.healthy .value { color: #28a745; }
+        .stat-card.warning .value { color: #ffc107; }
+        .stat-card.critical .value { color: #fd7e14; }
+        .stat-card.expired .value { color: #dc3545; }
+
+        .content {
+            padding: 30px 40px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: #1e3c72;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .table-container {
+            overflow-x: auto;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            background: white;
+        }
+
+        th {
+            background: linear-gradient(135deg, #2a5298 0%, #1e3c72 100%);
+            color: white;
+            padding: 15px 12px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+            cursor: pointer;
+            user-select: none;
+        }
+
+        th:hover {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        }
+
+        td {
+            padding: 12px;
+            border-bottom: 1px solid #dee2e6;
+            font-size: 14px;
+        }
+
+        tr:hover {
+            background: #f8f9fa;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge.healthy { background: #d4edda; color: #155724; }
+        .badge.warning { background: #fff3cd; color: #856404; }
+        .badge.critical { background: #f8d7da; color: #721c24; }
+        .badge.expired { background: #dc3545; color: white; }
+
+        .days-expiry {
+            font-weight: 600;
+        }
+
+        .days-expiry.healthy { color: #28a745; }
+        .days-expiry.warning { color: #ffc107; }
+        .days-expiry.critical { color: #fd7e14; }
+        .days-expiry.expired { color: #dc3545; }
+
+        .footer {
+            background: #f8f9fa;
+            padding: 20px 40px;
+            border-top: 1px solid #dee2e6;
+            text-align: center;
+            color: #6c757d;
+            font-size: 13px;
+        }
+
+        .compliance-notice {
+            background: #e7f3ff;
+            border-left: 4px solid #0066cc;
+            padding: 15px 20px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .compliance-notice h3 {
+            color: #0066cc;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .compliance-notice ul {
+            margin-left: 20px;
+            font-size: 14px;
+            line-height: 1.8;
+        }
+
+        .search-box {
+            margin-bottom: 20px;
+            padding: 12px;
+            width: 100%;
+            max-width: 400px;
+            border: 2px solid #dee2e6;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.2s;
+        }
+
+        .search-box:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        @media print {
+            body {
+                background: white;
+                padding: 0;
+            }
+
+            .container {
+                box-shadow: none;
+            }
+
+            .stat-card {
+                break-inside: avoid;
+            }
+
+            table {
+                font-size: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <div class="header">
+            <h1>🔐 Certificate Lifecycle Management Report</h1>
+            <div class="meta">
+                <span>📅 Generated: {{ report_timestamp_human }}</span>
+                <span>🏢 Vault Server: {{ vault_addr }}</span>
+                <span>📊 Total Certificates: {{ total_certificates }}</span>
+            </div>
+        </div>
+
+        {% if include_summary_stats %}
+        <!-- Statistics Dashboard -->
+        <div class="stats-grid">
+            <div class="stat-card total">
+                <div class="label">Total Certificates</div>
+                <div class="value">{{ total_certificates }}</div>
+            </div>
+
+            <div class="stat-card healthy">
+                <div class="label">🟢 Healthy</div>
+                <div class="value">{{ certs_healthy }}</div>
+            </div>
+
+            <div class="stat-card warning">
+                <div class="label">🟡 Warning (< {{ cert_warning_days }}d)</div>
+                <div class="value">{{ certs_warning }}</div>
+            </div>
+
+            <div class="stat-card critical">
+                <div class="label">🟠 Critical (< {{ cert_critical_days }}d)</div>
+                <div class="value">{{ certs_critical }}</div>
+            </div>
+
+            <div class="stat-card expired">
+                <div class="label">🔴 Expired</div>
+                <div class="value">{{ certs_expired }}</div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Content -->
+        <div class="content">
+            {% if include_compliance_section and (certs_expired | int > 0 or certs_critical | int > 0) %}
+            <!-- Compliance Notice -->
+            <div class="compliance-notice">
+                <h3>⚠️ Compliance Action Required</h3>
+                <ul>
+                    {% if certs_expired | int > 0 %}
+                    <li><strong>{{ certs_expired }} certificate(s)</strong> have EXPIRED and require immediate renewal</li>
+                    {% endif %}
+                    {% if certs_critical | int > 0 %}
+                    <li><strong>{{ certs_critical }} certificate(s)</strong> expiring within {{ cert_critical_days }} days - action needed</li>
+                    {% endif %}
+                    <li>Review the detailed table below and schedule renewal via AAP playbook</li>
+                    <li>Ensure audit logs are reviewed for certificate lifecycle events</li>
+                </ul>
+            </div>
+            {% endif %}
+
+            {% if include_certificate_table %}
+            <!-- Certificate Inventory Table -->
+            <div class="section">
+                <h2 class="section-title">📋 Certificate Inventory</h2>
+
+                <input type="text" id="searchBox" class="search-box" placeholder="🔍 Search by hostname, CN, or serial number..." onkeyup="filterTable()">
+
+                <div class="table-container">
+                    <table id="certTable">
+                        <thead>
+                            <tr>
+                                <th onclick="sortTable(0)">Hostname ↕</th>
+                                <th onclick="sortTable(1)">FQDN / Common Name ↕</th>
+                                <th onclick="sortTable(2)">Serial Number ↕</th>
+                                <th onclick="sortTable(3)">Days Until Expiry ↕</th>
+                                <th onclick="sortTable(4)">Expires On ↕</th>
+                                <th onclick="sortTable(5)">Status ↕</th>
+                                <th onclick="sortTable(6)">Last Scanned ↕</th>
+                                <th>Certificate Path</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cert in certificates_processed | sort(attribute='certificates.0.days_until_expiry') %}
+                            {% set cert_info = cert.certificates[0] %}
+                            {% set status_class = cert.compliance_status | lower %}
+                            <tr>
+                                <td><strong>{{ cert.hostname }}</strong></td>
+                                <td>{{ cert_info.common_name }}</td>
+                                <td><code style="font-size: 12px;">{{ cert_info.serial_number[:16] }}...</code></td>
+                                <td>
+                                    <span class="days-expiry {{ status_class }}">
+                                        {% if cert_info.days_until_expiry | int < 0 %}
+                                        {{ cert_info.days_until_expiry | int | abs }} days ago
+                                        {% else %}
+                                        {{ cert_info.days_until_expiry }} days
+                                        {% endif %}
+                                    </span>
+                                </td>
+                                <td>{{ cert_info.not_after }}</td>
+                                <td>
+                                    <span class="badge {{ status_class }}">{{ cert.compliance_status }}</span>
+                                </td>
+                                <td style="font-size: 12px;">{{ cert_info.last_scanned | default(cert_info.last_issued | default('N/A')) }}</td>
+                                <td style="font-size: 12px; font-family: monospace;">{{ cert_info.path }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            {% endif %}
+
+            {% if include_expiry_timeline %}
+            <!-- Expiry Timeline Section -->
+            <div class="section">
+                <h2 class="section-title">📆 Certificate Expiry Timeline</h2>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
+                    <p style="margin-bottom: 15px; color: #6c757d;"><strong>Next 90 Days Expiry Schedule:</strong></p>
+                    {% set expiring_soon = certificates_processed | selectattr('certificates.0.days_until_expiry', 'lessthan', 90) | list %}
+                    {% if expiring_soon | length > 0 %}
+                    <ul style="list-style: none; padding: 0;">
+                        {% for cert in expiring_soon | sort(attribute='certificates.0.days_until_expiry') %}
+                        {% set cert_info = cert.certificates[0] %}
+                        {% set status_class = cert.compliance_status | lower %}
+                        <li style="padding: 10px; margin-bottom: 8px; background: white; border-radius: 4px; border-left: 4px solid {% if status_class == 'expired' %}#dc3545{% elif status_class == 'critical' %}#fd7e14{% elif status_class == 'warning' %}#ffc107{% else %}#28a745{% endif %};">
+                            <strong>{{ cert.hostname }}</strong> ({{ cert_info.common_name }}) -
+                            <span class="days-expiry {{ status_class }}">{{ cert_info.days_until_expiry }} days</span> -
+                            {{ cert_info.not_after }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p style="color: #28a745; font-weight: 600;">✅ No certificates expiring in the next 90 days!</p>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Additional Information -->
+            <div class="section">
+                <h2 class="section-title">ℹ️ Report Information</h2>
+                <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
+                    <p style="margin-bottom: 10px;"><strong>Data Source:</strong> Vault KV <code>{{ vault_kv_mount }}/{{ vault_certificates_path }}/</code></p>
+                    <p style="margin-bottom: 10px;"><strong>Compliance Thresholds:</strong></p>
+                    <ul style="margin-left: 30px; margin-bottom: 15px; line-height: 1.8;">
+                        <li>🟢 <strong>Healthy:</strong> More than {{ cert_warning_days }} days until expiry</li>
+                        <li>🟡 <strong>Warning:</strong> {{ cert_warning_days }} days or less until expiry</li>
+                        <li>🟠 <strong>Critical:</strong> {{ cert_critical_days }} days or less until expiry</li>
+                        <li>🔴 <strong>Expired:</strong> Already expired</li>
+                    </ul>
+                    <p style="margin-bottom: 10px;"><strong>Remediation:</strong> Run <code>issue-pki-certificate.yml</code> playbook to renew expiring certificates</p>
+                    <p style="margin-bottom: 10px;"><strong>Automation:</strong> Schedule this report playbook in AAP for regular monitoring</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <p>Generated by Ansible Certificate Lifecycle Management System | Vault KV Inventory</p>
+            <p style="margin-top: 5px; font-size: 12px;">For Grafana integration, use the corresponding JSON report file</p>
+        </div>
+    </div>
+
+    <script>
+        // Table sorting functionality
+        function sortTable(columnIndex) {
+            const table = document.getElementById("certTable");
+            const tbody = table.querySelector("tbody");
+            const rows = Array.from(tbody.querySelectorAll("tr"));
+
+            // Determine sort direction
+            const currentDirection = table.dataset.sortDirection || 'asc';
+            const newDirection = currentDirection === 'asc' ? 'desc' : 'asc';
+            table.dataset.sortDirection = newDirection;
+
+            rows.sort((a, b) => {
+                let aVal = a.cells[columnIndex].textContent.trim();
+                let bVal = b.cells[columnIndex].textContent.trim();
+
+                // Try to parse as number
+                const aNum = parseFloat(aVal.replace(/[^0-9.-]/g, ''));
+                const bNum = parseFloat(bVal.replace(/[^0-9.-]/g, ''));
+
+                if (!isNaN(aNum) && !isNaN(bNum)) {
+                    return newDirection === 'asc' ? aNum - bNum : bNum - aNum;
+                }
+
+                // String comparison
+                return newDirection === 'asc'
+                    ? aVal.localeCompare(bVal)
+                    : bVal.localeCompare(aVal);
+            });
+
+            // Re-append sorted rows
+            rows.forEach(row => tbody.appendChild(row));
+        }
+
+        // Table filtering functionality
+        function filterTable() {
+            const searchBox = document.getElementById("searchBox");
+            const filter = searchBox.value.toLowerCase();
+            const table = document.getElementById("certTable");
+            const rows = table.querySelectorAll("tbody tr");
+
+            rows.forEach(row => {
+                const text = row.textContent.toLowerCase();
+                row.style.display = text.includes(filter) ? "" : "none";
+            });
+        }
+    </script>
+</body>
+</html>

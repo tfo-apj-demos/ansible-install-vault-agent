@@ -1,0 +1,191 @@
+---
+# roles/vault_prometheus_exporter/tasks/main.yml
+#
+# Deploy Vault Certificate Prometheus Exporter
+# Exposes certificate metrics for Grafana/Prometheus monitoring
+
+# ============================================================================
+# STEP 1: Install dependencies
+# ============================================================================
+
+- name: "STEP 1/7: Install Python dependencies"
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════"
+      - "  Vault Certificate Prometheus Exporter - Deployment"
+      - "═══════════════════════════════════════════════════════════"
+      - "Installing Python3 and required packages..."
+
+- name: Install Python3 and pip
+  ansible.builtin.package:
+    name:
+      - python3
+      - python3-pip
+    state: present
+  become: true
+
+- name: Install Python requests library
+  ansible.builtin.pip:
+    name: "{{ python_packages }}"
+    state: present
+    executable: pip3
+  become: true
+
+# ============================================================================
+# STEP 2: Create service user and directories
+# ============================================================================
+
+- name: "STEP 2/7: Create service user and directories"
+  ansible.builtin.debug:
+    msg: "Creating exporter user and installation directory..."
+
+- name: Create exporter service user
+  ansible.builtin.user:
+    name: "{{ exporter_user }}"
+    system: true
+    create_home: false
+    shell: /sbin/nologin
+    comment: "Vault Certificate Exporter Service Account"
+  become: true
+
+- name: Create exporter installation directory
+  ansible.builtin.file:
+    path: "{{ exporter_install_dir }}"
+    state: directory
+    owner: "{{ exporter_user }}"
+    group: "{{ exporter_group }}"
+    mode: "0755"
+  become: true
+
+# ============================================================================
+# STEP 3: Deploy exporter script
+# ============================================================================
+
+- name: "STEP 3/7: Deploy exporter Python script"
+  ansible.builtin.debug:
+    msg: "Copying vault_cert_exporter.py to {{ exporter_install_dir }}..."
+
+- name: Copy exporter script
+  ansible.builtin.copy:
+    src: vault_cert_exporter.py
+    dest: "{{ exporter_install_dir }}/vault_cert_exporter.py"
+    owner: "{{ exporter_user }}"
+    group: "{{ exporter_group }}"
+    mode: "0755"
+  become: true
+  notify: restart vault-cert-exporter
+
+# ============================================================================
+# STEP 4: Configure systemd service
+# ============================================================================
+
+- name: "STEP 4/7: Configure systemd service"
+  ansible.builtin.debug:
+    msg: "Configuring systemd service for exporter..."
+
+- name: Deploy systemd service file
+  ansible.builtin.template:
+    src: vault-cert-exporter.service.j2
+    dest: "/etc/systemd/system/{{ exporter_service_name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  become: true
+  notify: restart vault-cert-exporter
+
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+  become: true
+
+# ============================================================================
+# STEP 5: Enable and start service
+# ============================================================================
+
+- name: "STEP 5/7: Enable and start exporter service"
+  ansible.builtin.debug:
+    msg: "Enabling and starting {{ exporter_service_name }} service..."
+
+- name: Enable and start exporter service
+  ansible.builtin.systemd:
+    name: "{{ exporter_service_name }}"
+    enabled: "{{ exporter_service_enabled }}"
+    state: "{{ exporter_service_state }}"
+  become: true
+
+# ============================================================================
+# STEP 6: Verify service is running
+# ============================================================================
+
+- name: "STEP 6/7: Verify exporter service"
+  ansible.builtin.debug:
+    msg: "Verifying exporter service is running..."
+
+- name: Wait for exporter to start
+  ansible.builtin.wait_for:
+    port: "{{ exporter_port }}"
+    timeout: 30
+    msg: "Exporter failed to start on port {{ exporter_port }}"
+
+- name: Check exporter health endpoint
+  ansible.builtin.uri:
+    url: "http://localhost:{{ exporter_port }}/health"
+    method: GET
+    return_content: true
+    status_code: 200
+  register: health_check
+  retries: 3
+  delay: 5
+
+- name: Display health check result
+  ansible.builtin.debug:
+    msg: "✓ Exporter health check passed: {{ health_check.json }}"
+
+# ============================================================================
+# STEP 7: Display summary and next steps
+# ============================================================================
+
+- name: "STEP 7/7: Deployment complete"
+  ansible.builtin.debug:
+    msg:
+      - "═══════════════════════════════════════════════════════════"
+      - "  Vault Certificate Exporter - Deployment Complete"
+      - "═══════════════════════════════════════════════════════════"
+      - ""
+      - "Service Information:"
+      - "  Service Name: {{ exporter_service_name }}"
+      - "  Service Status: {{ exporter_service_state }}"
+      - "  User: {{ exporter_user }}"
+      - "  Install Directory: {{ exporter_install_dir }}"
+      - ""
+      - "Endpoints:"
+      - "  Metrics: http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ exporter_port }}/metrics"
+      - "  Health: http://{{ ansible_default_ipv4.address | default('localhost') }}:{{ exporter_port }}/health"
+      - ""
+      - "Configuration:"
+      - "  Vault Server: {{ vault_addr }}"
+      - "  Cache Duration: {{ exporter_cache_duration }}s"
+      - "  Warning Threshold: {{ cert_warning_days }} days"
+      - "  Critical Threshold: {{ cert_critical_days }} days"
+      - ""
+      - "Next Steps - Prometheus Configuration:"
+      - "  1. Add scrape target to prometheus.yml:"
+      - "     scrape_configs:"
+      - "       - job_name: 'vault-certificates'"
+      - "         static_configs:"
+      - "           - targets: ['{{ ansible_default_ipv4.address | default('localhost') }}:{{ exporter_port }}']"
+      - ""
+      - "  2. Reload Prometheus configuration:"
+      - "     systemctl reload prometheus"
+      - ""
+      - "Next Steps - Grafana Dashboard:"
+      - "  1. Import dashboard JSON (to be created)"
+      - "  2. Configure alerts for critical certificates"
+      - "  3. Set up notification channels (Slack, email, PagerDuty)"
+      - ""
+      - "Service Management:"
+      - "  Start: systemctl start {{ exporter_service_name }}"
+      - "  Stop: systemctl stop {{ exporter_service_name }}"
+      - "  Status: systemctl status {{ exporter_service_name }}"
+      - "  Logs: journalctl -u {{ exporter_service_name }} -f"
+      - "═══════════════════════════════════════════════════════════"

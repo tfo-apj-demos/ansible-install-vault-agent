@@ -1,0 +1,29 @@
+---
+# roles/vault_prometheus_exporter/defaults/main.yml
+#
+# Default variables for Vault Prometheus Exporter deployment
+
+# Vault connection settings
+vault_addr: "https://vault.hashicorp.local:8200"
+vault_ca_cert_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+
+# Exporter configuration
+exporter_port: 9090
+exporter_user: "vault-exporter"
+exporter_group: "vault-exporter"
+exporter_install_dir: "/opt/vault-cert-exporter"
+exporter_cache_duration: 60  # seconds
+exporter_log_level: "INFO"
+
+# Certificate thresholds
+cert_warning_days: 30
+cert_critical_days: 7
+
+# Systemd service configuration
+exporter_service_name: "vault-cert-exporter"
+exporter_service_enabled: true
+exporter_service_state: "started"
+
+# Python requirements
+python_packages:
+  - requests

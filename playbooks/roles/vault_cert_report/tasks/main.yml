@@ -262,14 +262,12 @@
       register: json_report_content
       when: report_format in ['json', 'both']
 
-    - name: Store reports in Vault KV
-      community.hashi_vault.vault_write:
-        url: "{{ vault_addr }}"
-        path: "{{ vault_kv_mount }}/data/reports/certificate-lifecycle"
-        data:
+    - name: Build Vault data payload
+      ansible.builtin.set_fact:
+        vault_report_data:
           timestamp: "{{ report_timestamp }}"
           timestamp_human: "{{ report_timestamp_human }}"
-          html_report: "{{ html_report_content.content | b64decode if report_format in ['html', 'both'] else 'N/A' }}"
+          html_report: "{{ html_report_content.content | b64decode if html_report_content is defined and html_report_content.content is defined else '' }}"
           json_report: "{{ json_report if report_format in ['json', 'both'] else {} }}"
           summary:
             total: "{{ total_certificates | int }}"
@@ -277,6 +275,12 @@
             critical: "{{ certs_critical | int }}"
             warning: "{{ certs_warning | int }}"
             healthy: "{{ certs_healthy | int }}"
+
+    - name: Store reports in Vault KV
+      community.hashi_vault.vault_write:
+        url: "{{ vault_addr }}"
+        path: "{{ vault_kv_mount }}/data/reports/certificate-lifecycle"
+        data: "{{ vault_report_data }}"
         auth_method: approle
         role_id: "{{ role_id }}"
         secret_id: "{{ secret_id }}"

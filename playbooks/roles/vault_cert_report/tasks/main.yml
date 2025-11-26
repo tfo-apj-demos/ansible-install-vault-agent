@@ -71,9 +71,14 @@
   retries: 3
   delay: 2
 
+- name: Debug - Show raw structure to understand data format
+  ansible.builtin.debug:
+    var: cert_inventory_list.data
+    verbosity: 1
+
 - name: Set fact for certificate keys list
   ansible.builtin.set_fact:
-    cert_keys_list: "{{ cert_inventory_list.data.data.keys | default([]) }}"
+    cert_keys_list: "{{ cert_inventory_list.data.data['keys'] | default([]) }}"
 
 - name: Display discovered certificate inventories
   ansible.builtin.debug:

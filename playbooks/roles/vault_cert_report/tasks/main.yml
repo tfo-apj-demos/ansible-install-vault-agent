@@ -127,10 +127,10 @@
   ansible.builtin.set_fact:
     certificates_processed: "{{ certificates_processed + [item.data.data.data | combine({'compliance_status': compliance_status, 'hostname': item.item})] }}"
     total_certificates: "{{ total_certificates | int + 1 }}"
-    certs_expired: "{{ certs_expired | int + 1 if days_until_expiry <= cert_expired_days else certs_expired | int }}"
-    certs_critical: "{{ certs_critical | int + 1 if days_until_expiry > cert_expired_days and days_until_expiry <= cert_critical_days else certs_critical | int }}"
-    certs_warning: "{{ certs_warning | int + 1 if days_until_expiry > cert_critical_days and days_until_expiry <= cert_warning_days else certs_warning | int }}"
-    certs_healthy: "{{ certs_healthy | int + 1 if days_until_expiry > cert_warning_days else certs_healthy | int }}"
+    certs_expired: "{{ certs_expired | int + 1 if days_until_expiry | int <= cert_expired_days else certs_expired | int }}"
+    certs_critical: "{{ certs_critical | int + 1 if days_until_expiry | int > cert_expired_days and days_until_expiry | int <= cert_critical_days else certs_critical | int }}"
+    certs_warning: "{{ certs_warning | int + 1 if days_until_expiry | int > cert_critical_days and days_until_expiry | int <= cert_warning_days else certs_warning | int }}"
+    certs_healthy: "{{ certs_healthy | int + 1 if days_until_expiry | int > cert_warning_days else certs_healthy | int }}"
   vars:
     cert_data: "{{ item.data.data.data }}"
     days_until_expiry: "{{ cert_data.certificates[0].days_until_expiry | int }}"

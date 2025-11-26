@@ -245,6 +245,60 @@
           - "  Latest: {{ report_latest_html }}"
 
 # ============================================================================
+# STEP 7: Store Reports in Vault KV for Persistent Access
+# ============================================================================
+
+- name: "STEP 7/7: Store reports in Vault KV for persistent access"
+  block:
+    - name: Read HTML report content
+      ansible.builtin.slurp:
+        src: "{{ report_latest_html }}"
+      register: html_report_content
+      when: report_format in ['html', 'both']
+
+    - name: Read JSON report content
+      ansible.builtin.slurp:
+        src: "{{ report_latest_json }}"
+      register: json_report_content
+      when: report_format in ['json', 'both']
+
+    - name: Store reports in Vault KV
+      community.hashi_vault.vault_write:
+        url: "{{ vault_addr }}"
+        path: "{{ vault_kv_mount }}/data/reports/certificate-lifecycle"
+        data:
+          timestamp: "{{ report_timestamp }}"
+          timestamp_human: "{{ report_timestamp_human }}"
+          html_report: "{{ html_report_content.content | b64decode if report_format in ['html', 'both'] else 'N/A' }}"
+          json_report: "{{ json_report if report_format in ['json', 'both'] else {} }}"
+          summary:
+            total: "{{ total_certificates | int }}"
+            expired: "{{ certs_expired | int }}"
+            critical: "{{ certs_critical | int }}"
+            warning: "{{ certs_warning | int }}"
+            healthy: "{{ certs_healthy | int }}"
+        auth_method: approle
+        role_id: "{{ role_id }}"
+        secret_id: "{{ secret_id }}"
+        validate_certs: true
+        ca_cert: "{{ vault_ca_cert }}"
+      environment:
+        REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
+        SSL_CERT_FILE: "{{ vault_ca_cert }}"
+
+    - name: Display Vault storage confirmation
+      ansible.builtin.debug:
+        msg:
+          - "✓ Reports stored in Vault KV"
+          - "  Path: {{ vault_kv_mount }}/data/reports/certificate-lifecycle"
+          - ""
+          - "To retrieve reports:"
+          - "  vault kv get {{ vault_kv_mount }}/reports/certificate-lifecycle"
+          - ""
+          - "Or via API:"
+          - "  curl {{ vault_addr }}/v1/{{ vault_kv_mount }}/data/reports/certificate-lifecycle"
+
+# ============================================================================
 # Final Summary
 # ============================================================================
 

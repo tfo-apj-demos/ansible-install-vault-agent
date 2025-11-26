@@ -345,7 +345,7 @@
                                         {% endif %}
                                     </span>
                                 </td>
-                                <td>{{ cert_info.not_after }}</td>
+                                <td>{{ cert_info.not_after | default(cert_info.expiry_date | default('N/A')) }}</td>
                                 <td>
                                     <span class="badge {{ status_class }}">{{ cert.compliance_status }}</span>
                                 </td>
@@ -374,7 +374,7 @@
                         <li style="padding: 10px; margin-bottom: 8px; background: white; border-radius: 4px; border-left: 4px solid {% if status_class == 'expired' %}#dc3545{% elif status_class == 'critical' %}#fd7e14{% elif status_class == 'warning' %}#ffc107{% else %}#28a745{% endif %};">
                             <strong>{{ cert.hostname }}</strong> ({{ cert_info.common_name }}) -
                             <span class="days-expiry {{ status_class }}">{{ cert_info.days_until_expiry }} days</span> -
-                            {{ cert_info.not_after }}
+                            {{ cert_info.not_after | default(cert_info.expiry_date | default('N/A')) }}
                         </li>
                         {% endfor %}
                     </ul>

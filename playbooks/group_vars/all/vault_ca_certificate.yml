@@ -1,0 +1,73 @@
+---
+# Vault CA Certificate Chain
+# This contains the full certificate chain: Intermediate CA + Root CA
+# Used for SSL verification when connecting to Vault from AAP Execution Environments
+#
+# To update this certificate:
+# 1. Download the full chain from Vault or your CA
+# 2. Paste the certificate content below (maintain the literal block format with |)
+# 3. Ensure both intermediate and root certificates are included
+
+vault_ca_cert_content: |
+  -----BEGIN CERTIFICATE-----
+  MIIEqDCCApCgAwIBAgIUQeAXM66DYA1j7VgO99xEElZCpvQwDQYJKoZIhvcNAQEL
+  BQAwPjEXMBUGA1UEChMOSENQIFZhdWx0IEdDVkUxIzAhBgNVBAMTGkhDUCBWYXVs
+  dCBSb290IENBIGZvciBHQ1ZFMB4XDTI1MTEyNTEwMzU1M1oXDTMwMTEyNDEwMzYy
+  M1owgYkxCzAJBgNVBAYTAkFVMRgwFgYDVQQIEw9OZXcgU291dGggV2FsZXMxDzAN
+  BgNVBAcTBlN5ZG5leTEMMAoGA1UEChMDU0VBMRQwEgYDVQQLEwtDZW50cmFsIFBL
+  STErMCkGA1UEAxMiaGFzaGljb3JwLmxvY2FsIENlbnRyYWwgU2lnbmluZyBDQTB2
+  MBAGByqGSM49AgEGBSuBBAAiA2IABA6owZ+KPe8rvSLW6BTDM4OKFj17dLe5DG+8
+  EiorhwmQveiKQJzeVQAG3GP0VlFJSxH+qI4iYuqFEQ9TQZcnd12UhohjqQtFkau5
+  c11ZtS+l/nt9/teMIKb342O/BViN4qOB/zCB/DAOBgNVHQ8BAf8EBAMCAQYwDwYD
+  VR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUZhccm4m/9iMCFUDNveuD8k4oXw4wHwYD
+  VR0jBBgwFoAUnX1HtEAuTdn19JuC9Z7czml94EswSwYIKwYBBQUHAQEEPzA9MDsG
+  CCsGAQUFBzAChi9odHRwczovL3ZhdWx0Lmhhc2hpY29ycC5sb2NhbC5jb20vdjEv
+  cm9vdC1jYS9jYTA7BgNVHR8ENDAyMDCgLqAshipodHRwczovL3ZhdWx0Lmhhc2hp
+  Y29ycC5jb20vdjEvcm9vdC1jYS9jcmwwDwYDVR0RBAgwBocEfwAAATANBgkqhkiG
+  9w0BAQsFAAOCAgEAOSPPTai7Gms3UN/FpugJYZdqjQM1vNc317VjysUYGz97Xkjh
+  f+ynmgxIMtsw8X7zFiTE2C3kYU/ojTZHtnecxQmyovCkhMChzOx19DBEiMQw9vxS
+  kYa/yoEojhRqEOmRId9Xg8lA9Bbo995gaMppp9lY/CtDvQxACf3ptu+xdMBmEXsS
+  1qyWlSjIupB7lvZYdpga9MvxnG+7AslAHaM9Kq6VfTZYZMTmuY9+oLHHKJKKs5t5
+  hjfJGHI5SkVDlWMbWJWqUh4aZMbSkw/fgDXt7jieWLs348bx9CqQy/pOHY1TNwQ9
+  C/i7PrDbbhsujkvDzjuGCfpUHduO5wa3tY07aP7DajtnxUHcE5zSiFovli+qI1p+
+  PVKngGb1HyH9XQlfvA8LmEBVDg/r9zGUEKnez7ik4uUsbtl1ziS81gt8PbSnIh8F
+  Ri913a7swFIZdcYvPCtw+Hx7GgxzINbT6yOfxlUj3W3JwZ2nS4WX4gfMk6gg3OA6
+  sA09pokKw3TpJ4tz5a983/y5gOLblOoU2yeDR/7jWnoLkqRysRdKV32+hOvceyco
+  Gd0KKisTGfdCmhxXd6/kYLezKfURywEbZsWqQhFeJSJisJngeGWYIiChVlwoaXRB
+  3CmJdbChrw65KELQFI+kEIjOYsQAmCboFFkL//vv+gPCFn3emvatbxcbgG0=
+  -----END CERTIFICATE-----
+  -----BEGIN CERTIFICATE-----
+  MIIFSDCCAzCgAwIBAgIQVImFM3LWF5lWU3sOuhuhlDANBgkqhkiG9w0BAQsFADA+
+  MRcwFQYDVQQKEw5IQ1AgVmF1bHQgR0NWRTEjMCEGA1UEAxMaSENQIFZhdWx0IFJv
+  b3QgQ0EgZm9yIEdDVkUwHhcNMjUxMTI0MDMyMjE5WhcNMzUxMTIyMDMyMjE5WjA+
+  MRcwFQYDVQQKEw5IQ1AgVmF1bHQgR0NWRTEjMCEGA1UEAxMaSENQIFZhdWx0IFJv
+  b3QgQ0EgZm9yIEdDVkUwggIiMA0GCSqGSIb3DQEBAQUAA4ICDwAwggIKAoICAQCm
+  ZW8jEs7r7/MInUIRWUbLby1OqdQocVjLwudiNy0nEECELnvr7yqFloW4UCfJW6Er
+  R4/ag41t8avg02sOSWsXKKhB/NjcfdYlGpK91277VMw+DPKAkpki9y02rzuPqgik
+  M37UgKpRxBBJzZ9BtojPXMHO/J2qkT15Cg4CmRWTH9pNjsLbfQvy76SalQnLdopJ
+  cXg08cCNyH7RFL6JkuaBJSP4/DgSUV5fAT9qVcgkyZx9w/5L5YJYxvqEwDBMZInu
+  Ai0uo7rGkTVvWVRVkDtmYONrJ+KQExQ/743Dc8bnfz3yKmT7dMo74Qg/ZLqL/bTi
+  VXRxjBRNR1uQp3E0XA/69cQHjsAbw1PUo8PVjVuPezakxqk7pP7Wk02EER0C7tRC
+  szhMxDFdffHlEmog0hqu5lCXAWYptVPNnmA0Hqk5wFMPSC98S0wqSptkOgf6UEcu
+  Kmu0agMt8WgIlFCo07lDJb1oG0OyxJWY5JEAtdn5OQB3HmVykDt+yBekxz2Cdny7
+  zHYH84c0J6W1ZzNLWYBujO9kPCWC21x/8JYMWa55WDuxXM3/CVHYxlq6yHIOEumk
+  wD6qPmsHnAgDcHWUL1mfU2iTyUxNlKvpyt7xvFphJ5t8np8a7rCUTlayQenAV3s5
+  QY98F4BU9v6PsCXNoDfaBU0aNoVhtZTV154ciDPHJQIDAQABo0IwQDAOBgNVHQ8B
+  Af8EBAMCAqQwDwYDVR0TAQH/BAUwAwEB/zAdBgNVHQ4EFgQUnX1HtEAuTdn19JuC
+  9Z7czml94EswDQYJKoZIhvcNAQELBQADggIBACs5X86BhshUAkmMqwm+yt8LzZC0
+  RPY/OQKn7/yj12GIys5b6oVg6fD6yR4EnlYCJ7ecQMrwSb7NwYwJts4q0SQsQ5CD
+  W77YzSCM/uG4hvIvxMF3Wc1GM2d8HZCnkz2eVd1jYhSRFbtSQ4hUAt+9JYa4vtcP
+  5Iu+LCxHeOOncm+fkJITxX36hHF3y3CGMNexe3YW1qcJ6i+Jlq/b1DFBr1i3Vp87
+  3UMl+5W+mJxHmExgObpYxgYN9do4pKCxTObvhdj/nuXO1J4N1djiRd7g9+wzM+jS
+  EWh+TuBxA91naCH+yH9C7LJ+uVqclAr5CePuK8BP/6xIowX0zcIxNFuBVS9loHUa
+  6wOBybUm8WOULIlemGAnOTyGKaendbMScFBeOmxto9dmL82uAFM0FvpsgEepRZP2
+  V7WpcINO7N14xCmfNtoCAjvyIdH4r6PLCdi091qBnElltJBRyQG2Y6V8iNNToURJ
+  paExo87cZtvS/0FLFVzZQ4SFAklGxDDn8C7FuSBItmbWzY/SCfBqBhttYQk6Tc8W
+  1pK0UjqnIfNLjEw7H2+6D7UFWGaPeFVuzyLTHv8aL2lor3bB1MRHGJbDTHeBWGAk
+  0kqLXXE3HgRC2MfRjINJSFpeC5vEmE2VjuNXmFz0Gl+BXKMZFM26vHCtqiYD7v8B
+  0vvz8fAZiX/uS2VU
+  -----END CERTIFICATE-----
+
+# Alternative: Use this if the community.hashi_vault collection supports
+# certificate content directly (some versions do via 'ca_cert' parameter)
+# If not supported, we'll need to write the cert to a temp file first

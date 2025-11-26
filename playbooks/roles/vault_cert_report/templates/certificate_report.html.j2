@@ -365,7 +365,12 @@
                 <h2 class="section-title">📆 Certificate Expiry Timeline</h2>
                 <div style="background: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #dee2e6;">
                     <p style="margin-bottom: 15px; color: #6c757d;"><strong>Next 90 Days Expiry Schedule:</strong></p>
-                    {% set expiring_soon = certificates_processed | selectattr('certificates.0.days_until_expiry', 'lessthan', 90) | list %}
+                    {% set expiring_soon = [] %}
+                    {% for cert in certificates_processed %}
+                        {% if cert.certificates[0].days_until_expiry | int < 90 %}
+                            {% set _ = expiring_soon.append(cert) %}
+                        {% endif %}
+                    {% endfor %}
                     {% if expiring_soon | length > 0 %}
                     <ul style="list-style: none; padding: 0;">
                         {% for cert in expiring_soon | sort(attribute='certificates.0.days_until_expiry') %}

@@ -267,8 +267,8 @@
         vault_report_data:
           timestamp: "{{ report_timestamp }}"
           timestamp_human: "{{ report_timestamp_human }}"
-          html_report: "{{ html_report_content.content | b64decode if html_report_content is defined and html_report_content.content is defined else '' }}"
-          json_report: "{{ json_report if report_format in ['json', 'both'] else {} }}"
+          html_report: "{{ html_report_content.content | b64decode if (html_report_content is defined and html_report_content.content is defined) else 'Report not generated' }}"
+          json_data: "{{ json_report if (json_report is defined) else {'error': 'Report not generated'} }}"
           summary:
             total: "{{ total_certificates | int }}"
             expired: "{{ certs_expired | int }}"
@@ -276,11 +276,19 @@
             warning: "{{ certs_warning | int }}"
             healthy: "{{ certs_healthy | int }}"
 
+    - name: Debug - Show vault data structure
+      ansible.builtin.debug:
+        msg:
+          - "Vault data keys: {{ vault_report_data.keys() | list }}"
+          - "Data has content: {{ vault_report_data | length > 0 }}"
+        verbosity: 1
+
     - name: Store reports in Vault KV
       community.hashi_vault.vault_write:
         url: "{{ vault_addr }}"
         path: "{{ vault_kv_mount }}/data/reports/certificate-lifecycle"
-        data: "{{ vault_report_data }}"
+        data:
+          data: "{{ vault_report_data }}"
         auth_method: approle
         role_id: "{{ role_id }}"
         secret_id: "{{ secret_id }}"

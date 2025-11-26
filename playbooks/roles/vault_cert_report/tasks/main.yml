@@ -135,7 +135,7 @@
     cert_data: "{{ item.data.data.data }}"
     days_until_expiry: "{{ cert_data.certificates[0].days_until_expiry | int }}"
     compliance_status: >-
-      {% if days_until_expiry <= cert_expired_days %}EXPIRED{% elif days_until_expiry <= cert_critical_days %}CRITICAL{% elif days_until_expiry <= cert_warning_days %}WARNING{% else %}HEALTHY{% endif %}
+      {% if days_until_expiry | int <= cert_expired_days %}EXPIRED{% elif days_until_expiry | int <= cert_critical_days %}CRITICAL{% elif days_until_expiry | int <= cert_warning_days %}WARNING{% else %}HEALTHY{% endif %}
   loop: "{{ cert_inventories_raw.results }}"
   when:
     - cert_inventories_raw is defined

@@ -71,11 +71,15 @@
   retries: 3
   delay: 2
 
+- name: Set fact for certificate keys list
+  ansible.builtin.set_fact:
+    cert_keys_list: "{{ cert_inventory_list.data.keys | default([]) }}"
+
 - name: Display discovered certificate inventories
   ansible.builtin.debug:
     msg:
-      - "✓ Found {{ cert_inventory_list.data.keys | default([]) | length }} certificate inventory entries"
-      - "  Hostnames: {{ cert_inventory_list.data.keys | default([]) | join(', ') }}"
+      - "✓ Found {{ cert_keys_list | length }} certificate inventory entries"
+      - "  Hostnames: {{ cert_keys_list | join(', ') }}"
 
 # ============================================================================
 # STEP 2: Retrieve detailed inventory for each certificate
@@ -97,9 +101,9 @@
   environment:
     REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
     SSL_CERT_FILE: "{{ vault_ca_cert }}"
-  loop: "{{ cert_inventory_list.data.keys | default([]) }}"
+  loop: "{{ cert_keys_list }}"
   register: cert_inventories_raw
-  when: cert_inventory_list.data.keys | default([]) | length > 0
+  when: cert_keys_list | length > 0
 
 # ============================================================================
 # STEP 3: Process and enrich certificate data

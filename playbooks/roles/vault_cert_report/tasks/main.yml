@@ -24,6 +24,24 @@
     - vault_ca_cert_content is defined
     - vault_ca_cert_content | length > 0
 
+- name: Debug - Display CA certificate path being used
+  ansible.builtin.debug:
+    msg:
+      - "Using CA certificate: {{ vault_ca_cert }}"
+      - "CA cert file exists: {{ lookup('pipe', 'test -f ' + vault_ca_cert + ' && echo true || echo false') }}"
+
+- name: Verify CA certificate file is readable
+  ansible.builtin.stat:
+    path: "{{ vault_ca_cert }}"
+  register: ca_cert_stat
+
+- name: Display CA certificate file info
+  ansible.builtin.debug:
+    msg:
+      - "CA cert exists: {{ ca_cert_stat.stat.exists }}"
+      - "CA cert size: {{ ca_cert_stat.stat.size | default(0) }} bytes"
+      - "CA cert readable: {{ ca_cert_stat.stat.readable | default(false) }}"
+
 # ============================================================================
 # STEP 1: List all certificate inventories from Vault KV
 # ============================================================================
@@ -46,6 +64,9 @@
     secret_id: "{{ secret_id }}"
     validate_certs: true
     ca_cert: "{{ vault_ca_cert }}"
+  environment:
+    REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
+    SSL_CERT_FILE: "{{ vault_ca_cert }}"
   register: cert_inventory_list
   retries: 3
   delay: 2
@@ -73,6 +94,9 @@
     secret_id: "{{ secret_id }}"
     validate_certs: true
     ca_cert: "{{ vault_ca_cert }}"
+  environment:
+    REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
+    SSL_CERT_FILE: "{{ vault_ca_cert }}"
   loop: "{{ cert_inventory_list.data.keys | default([]) }}"
   register: cert_inventories_raw
   when: cert_inventory_list.data.keys | default([]) | length > 0

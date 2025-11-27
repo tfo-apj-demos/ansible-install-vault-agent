@@ -1,0 +1,142 @@
+---
+# Demo Certificate Setup Playbook - Varied Expiry States
+#
+# Purpose: Create a realistic certificate lifecycle demo by issuing certificates
+#          with different TTLs to simulate HEALTHY/WARNING/CRITICAL/EXPIRED states
+#
+# This playbook issues certificates with TTLs mapped to VM groups:
+#   - database-server-* → EXPIRED (1 hour TTL, wait 2 hours)
+#   - app-server-01/02  → CRITICAL (2 days TTL)
+#   - app-server-03     → WARNING (25 days TTL)
+#   - web-server-*      → HEALTHY (90 days TTL)
+#
+# Usage:
+#   1. Run this playbook to issue varied certificates:
+#      ansible-playbook playbooks/demo-setup-varied-certificates.yml \
+#        -e vault_server_address=https://vault.hashicorp.local:8200
+#
+#   2. For EXPIRED state, wait 2-3 hours after running
+#
+#   3. Then run the report playbook to see varied results:
+#      ansible-playbook playbooks/generate-certificate-report.yml
+#
+# Timeline Strategy:
+#   - EXPIRED:  1h TTL (db servers) - need to wait for actual expiry
+#   - CRITICAL: 48h TTL (app-server-01, app-server-02)
+#   - WARNING:  600h TTL / 25 days (app-server-03)
+#   - HEALTHY:  2160h TTL / 90 days (web servers)
+
+- name: Demo Setup - Issue Certificates with Varied Expiry States
+  hosts: localhost
+  gather_facts: true
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
+    vault_pki_role: "server"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+
+    # Certificate TTL mapping by hostname pattern
+    cert_ttl_map:
+      database-server-01: "1h"      # EXPIRED (after 2h wait)
+      database-server-02: "1h"      # EXPIRED (after 2h wait)
+      app-server-01: "48h"          # CRITICAL (2 days)
+      app-server-02: "48h"          # CRITICAL (2 days)
+      app-server-03: "600h"         # WARNING (25 days)
+      web-server-01: "2160h"        # HEALTHY (90 days)
+      web-server-02: "2160h"        # HEALTHY (90 days)
+      web-server-03: "2160h"        # HEALTHY (90 days)
+
+  tasks:
+    - name: Display demo setup information
+      ansible.builtin.debug:
+        msg:
+          - "═══════════════════════════════════════════════════════════"
+          - "  Demo Certificate Setup - Varied Expiry States"
+          - "═══════════════════════════════════════════════════════════"
+          - ""
+          - "This playbook creates a realistic certificate lifecycle demo by"
+          - "issuing certificates with different TTLs to simulate real-world"
+          - "certificate management scenarios."
+          - ""
+          - "Certificate Lifecycle States:"
+          - "  🔴 EXPIRED:  database-server-* (1h TTL - wait 2h for expiry)"
+          - "  🟠 CRITICAL: app-server-01, app-server-02 (48h / 2 days TTL)"
+          - "  🟡 WARNING:  app-server-03 (600h / 25 days TTL)"
+          - "  🟢 HEALTHY:  web-server-* (2160h / 90 days TTL)"
+          - ""
+          - "Target Hosts: {{ groups['all'] | length }} total"
+          - "Vault Server: {{ vault_addr }}"
+          - ""
+          - "═══════════════════════════════════════════════════════════"
+
+    - name: Issue certificates with varied TTLs per host
+      include_role:
+        name: vault_pki_issue
+      vars:
+        target_hostname: "{{ item }}"
+        cert_common_name: "{{ item }}.{{ domain }}"
+        cert_ttl: "{{ cert_ttl_map[item] }}"
+        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
+        ca_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-ca.crt"
+        chain_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-chain.crt"
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }} (TTL: {{ cert_ttl_map[item] }})"
+
+    - name: Update certificate inventory in Vault KV
+      include_role:
+        name: vault_cert_inventory_update
+      vars:
+        target_hostname: "{{ item }}"
+        cert_common_name: "{{ item }}.{{ domain }}"
+        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+    - name: Display demo setup summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "═══════════════════════════════════════════════════════════"
+          - "  Demo Certificate Setup Complete!"
+          - "═══════════════════════════════════════════════════════════"
+          - ""
+          - "✓ Issued {{ groups['all'] | length }} certificates with varied TTLs"
+          - "✓ Updated Vault KV inventory (secrets/certificates/*)"
+          - ""
+          - "Certificate Distribution:"
+          - "  🔴 EXPIRED (1h):     2 certificates (database-server-*)"
+          - "  🟠 CRITICAL (48h):   2 certificates (app-server-01/02)"
+          - "  🟡 WARNING (600h):   1 certificate (app-server-03)"
+          - "  🟢 HEALTHY (2160h):  3 certificates (web-server-*)"
+          - ""
+          - "⏰ IMPORTANT - For EXPIRED State:"
+          - "   Database server certificates have 1h TTL."
+          - "   Wait 2-3 hours for them to actually expire."
+          - "   Then run the report playbook to see EXPIRED status."
+          - ""
+          - "Next Steps:"
+          - ""
+          - "  1. WAIT 2-3 hours (for database certs to expire)"
+          - ""
+          - "  2. Generate the certificate report:"
+          - "     ansible-playbook playbooks/generate-certificate-report.yml"
+          - ""
+          - "  3. View the HTML dashboard:"
+          - "     open ~/vault-cert-reports/certificate-report-latest.html"
+          - ""
+          - "  4. You should see a realistic distribution:"
+          - "     - 2 EXPIRED certificates (red)"
+          - "     - 2 CRITICAL certificates (orange)"
+          - "     - 1 WARNING certificate (yellow)"
+          - "     - 3 HEALTHY certificates (green)"
+          - ""
+          - "Alternative - Skip Wait (Immediate Demo):"
+          - "  If you can't wait 2-3 hours, you can manually modify the"
+          - "  Vault KV data to set past expiry dates for database servers."
+          - "  See: vault kv patch secrets/certificates/database-server-01"
+          - ""
+          - "═══════════════════════════════════════════════════════════"

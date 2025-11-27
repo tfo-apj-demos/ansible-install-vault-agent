@@ -6,6 +6,33 @@
 # No agent, no complexity - just issue and place files!
 
 # ============================================================================
+# STEP 0: Prepare CA certificate for SSL verification (if content provided)
+# ============================================================================
+
+- name: Create temporary CA certificate file from content
+  ansible.builtin.copy:
+    content: "{{ vault_ca_cert_content }}"
+    dest: "/tmp/vault-ca-bundle.crt"
+    mode: "0644"
+  when:
+    - vault_ca_cert_content is defined
+    - vault_ca_cert_content | length > 0
+
+- name: Set CA certificate path to temporary file if content was provided
+  ansible.builtin.set_fact:
+    vault_ca_cert: "/tmp/vault-ca-bundle.crt"
+  when:
+    - vault_ca_cert_content is defined
+    - vault_ca_cert_content | length > 0
+
+- name: Set CA certificate path to default if not provided via content
+  ansible.builtin.set_fact:
+    vault_ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  when:
+    - vault_ca_cert_content is not defined or vault_ca_cert_content | length == 0
+    - vault_ca_cert is not defined
+
+# ============================================================================
 # STEP 1: Verify Vault connectivity (from Execution Environment)
 # ============================================================================
 
@@ -15,7 +42,7 @@
     method: GET
     return_content: true
     validate_certs: true
-    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    ca_path: "{{ vault_ca_cert }}"
     status_code: [200, 473]  # Accept both active (200) and standby (473) nodes
     follow_redirects: all
   register: vault_health
@@ -51,7 +78,7 @@
     role_id: "{{ role_id }}"  # Provided by AAP credential
     secret_id: "{{ secret_id }}"  # Provided by AAP credential
     validate_certs: true
-    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    ca_cert: "{{ vault_ca_cert }}"
   register: issued_cert
 
 - name: Display certificate issuance success

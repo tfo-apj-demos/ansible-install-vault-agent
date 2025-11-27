@@ -4,6 +4,33 @@
 # Update certificate inventory in Vault KV after new certificate issuance
 # Called after vault_pki_issue role completes
 
+# ============================================================================
+# STEP 0: Prepare CA certificate for SSL verification (if content provided)
+# ============================================================================
+
+- name: Create temporary CA certificate file from content
+  ansible.builtin.copy:
+    content: "{{ vault_ca_cert_content }}"
+    dest: "/tmp/vault-ca-bundle.crt"
+    mode: "0644"
+  when:
+    - vault_ca_cert_content is defined
+    - vault_ca_cert_content | length > 0
+
+- name: Set CA certificate path to temporary file if content was provided
+  ansible.builtin.set_fact:
+    vault_ca_cert: "/tmp/vault-ca-bundle.crt"
+  when:
+    - vault_ca_cert_content is defined
+    - vault_ca_cert_content | length > 0
+
+- name: Set CA certificate path to default if not provided via content
+  ansible.builtin.set_fact:
+    vault_ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  when:
+    - vault_ca_cert_content is not defined or vault_ca_cert_content | length == 0
+    - vault_ca_cert is not defined
+
 - name: "Update certificate inventory in Vault KV after issuance"
   ansible.builtin.debug:
     msg:
@@ -55,7 +82,7 @@
     role_id: "{{ role_id }}"
     secret_id: "{{ secret_id }}"
     validate_certs: true
-    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    ca_cert: "{{ vault_ca_cert }}"
   register: kv_update_result
 
 - name: Confirm inventory updated in Vault KV

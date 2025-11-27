@@ -83,7 +83,12 @@
     secret_id: "{{ secret_id }}"
     validate_certs: true
     ca_cert: "{{ vault_ca_cert }}"
+  environment:
+    REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
+    SSL_CERT_FILE: "{{ vault_ca_cert }}"
   register: kv_update_result
+  retries: 3
+  delay: 2
 
 - name: Confirm inventory updated in Vault KV
   ansible.builtin.debug:

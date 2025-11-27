@@ -32,6 +32,22 @@
     - vault_ca_cert_content is not defined or vault_ca_cert_content | length == 0
     - vault_ca_cert is not defined
 
+- name: Debug - Display CA certificate path being used
+  ansible.builtin.debug:
+    msg: "Using Vault CA certificate: {{ vault_ca_cert }}"
+
+- name: Verify CA certificate file exists and is readable
+  ansible.builtin.stat:
+    path: "{{ vault_ca_cert }}"
+  register: ca_cert_stat
+
+- name: Display CA certificate file status
+  ansible.builtin.debug:
+    msg:
+      - "CA cert path: {{ vault_ca_cert }}"
+      - "CA cert exists: {{ ca_cert_stat.stat.exists | default(false) }}"
+      - "CA cert size: {{ ca_cert_stat.stat.size | default(0) }} bytes"
+
 # ============================================================================
 # STEP 1: Verify Vault connectivity (from Execution Environment)
 # ============================================================================
@@ -45,6 +61,9 @@
     ca_path: "{{ vault_ca_cert }}"
     status_code: [200, 473]  # Accept both active (200) and standby (473) nodes
     follow_redirects: all
+  environment:
+    REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
+    SSL_CERT_FILE: "{{ vault_ca_cert }}"
   register: vault_health
   retries: 3
   delay: 5
@@ -79,7 +98,12 @@
     secret_id: "{{ secret_id }}"  # Provided by AAP credential
     validate_certs: true
     ca_cert: "{{ vault_ca_cert }}"
+  environment:
+    REQUESTS_CA_BUNDLE: "{{ vault_ca_cert }}"
+    SSL_CERT_FILE: "{{ vault_ca_cert }}"
   register: issued_cert
+  retries: 3
+  delay: 2
 
 - name: Display certificate issuance success
   ansible.builtin.debug:

@@ -27,12 +27,13 @@
 #   - HEALTHY:  2160h TTL / 90 days (web servers)
 
 - name: Demo Setup - Issue Certificates with Varied Expiry States
-  hosts: localhost
+  hosts: all
   gather_facts: true
+  serial: 1  # Process one host at a time to avoid overwhelming Vault
   vars:
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
-    vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
-    vault_pki_role: "server"
+    vault_pki_path: "{{ vault_pki_mount_path | default('issuing-ca') }}"
+    vault_pki_role: "server-certs"
     domain: "{{ target_domain | default('hashicorp.local') }}"
 
     # Certificate TTL mapping by hostname pattern
@@ -69,32 +70,28 @@
           - ""
           - "═══════════════════════════════════════════════════════════"
 
-    - name: Issue certificates with varied TTLs per host
+    - name: Issue certificate with varied TTL for this host
       include_role:
         name: vault_pki_issue
       vars:
-        target_hostname: "{{ item }}"
-        cert_common_name: "{{ item }}.{{ domain }}"
-        cert_ttl: "{{ cert_ttl_map[item] }}"
-        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
-        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
-        ca_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-ca.crt"
-        chain_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}-chain.crt"
-      loop: "{{ groups['all'] }}"
-      loop_control:
-        label: "{{ item }} (TTL: {{ cert_ttl_map[item] }})"
+        target_hostname: "{{ inventory_hostname }}"
+        cert_common_name: "{{ inventory_hostname }}.{{ domain }}"
+        cert_ttl: "{{ cert_ttl_map[inventory_hostname] }}"
+        cert_file_path: "/etc/pki/tls/certs/{{ inventory_hostname }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ inventory_hostname }}.{{ domain }}.key"
+        ca_file_path: "/etc/pki/tls/certs/{{ inventory_hostname }}.{{ domain }}-ca.crt"
+        chain_file_path: "/etc/pki/tls/certs/{{ inventory_hostname }}.{{ domain }}-chain.crt"
+      when: inventory_hostname in cert_ttl_map
 
     - name: Update certificate inventory in Vault KV
       include_role:
         name: vault_cert_inventory_update
       vars:
-        target_hostname: "{{ item }}"
-        cert_common_name: "{{ item }}.{{ domain }}"
-        cert_file_path: "/etc/pki/tls/certs/{{ item }}.{{ domain }}.crt"
-        key_file_path: "/etc/pki/tls/private/{{ item }}.{{ domain }}.key"
-      loop: "{{ groups['all'] }}"
-      loop_control:
-        label: "{{ item }}"
+        target_hostname: "{{ inventory_hostname }}"
+        cert_common_name: "{{ inventory_hostname }}.{{ domain }}"
+        cert_file_path: "/etc/pki/tls/certs/{{ inventory_hostname }}.{{ domain }}.crt"
+        key_file_path: "/etc/pki/tls/private/{{ inventory_hostname }}.{{ domain }}.key"
+      when: inventory_hostname in cert_ttl_map
 
     - name: Display demo setup summary
       ansible.builtin.debug:
@@ -104,8 +101,36 @@
           - "  Demo Certificate Setup Complete!"
           - "═══════════════════════════════════════════════════════════"
           - ""
-          - "✓ Issued {{ groups['all'] | length }} certificates with varied TTLs"
-          - "✓ Updated Vault KV inventory (secrets/certificates/*)"
+          - "✓ Issued certificate with TTL: {{ cert_ttl_map[inventory_hostname] }}"
+          - "✓ Updated Vault KV inventory: secrets/certificates/{{ inventory_hostname }}"
+          - ""
+          - "Certificate Details:"
+          - "  Host: {{ inventory_hostname }}"
+          - "  TTL: {{ cert_ttl_map[inventory_hostname] }}"
+          - ""
+          - "Next Steps:"
+          - ""
+          - "  After all hosts complete, run the report playbook:"
+          - "     ansible-playbook playbooks/generate-certificate-report.yml"
+          - ""
+          - "  View the HTML dashboard:"
+          - "     open ~/vault-cert-reports/certificate-report-latest.html"
+          - ""
+          - "═══════════════════════════════════════════════════════════"
+      when: inventory_hostname in cert_ttl_map
+      run_once: false
+
+- name: Display final summary
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Final demo setup summary
+      ansible.builtin.debug:
+        msg:
+          - ""
+          - "═══════════════════════════════════════════════════════════"
+          - "  🎉 All Certificates Issued Successfully!"
+          - "═══════════════════════════════════════════════════════════"
           - ""
           - "Certificate Distribution:"
           - "  🔴 EXPIRED (1h):     2 certificates (database-server-*)"
@@ -116,27 +141,18 @@
           - "⏰ IMPORTANT - For EXPIRED State:"
           - "   Database server certificates have 1h TTL."
           - "   Wait 2-3 hours for them to actually expire."
-          - "   Then run the report playbook to see EXPIRED status."
           - ""
-          - "Next Steps:"
+          - "🚀 Quick Demo (No Wait Required):"
+          - "   Run the immediate varied states script to skip the wait:"
+          - "   ./scripts/demo-immediate-varied-states.sh"
           - ""
-          - "  1. WAIT 2-3 hours (for database certs to expire)"
+          - "   This script modifies Vault KV data directly to create"
+          - "   varied expiry states instantly!"
           - ""
-          - "  2. Generate the certificate report:"
-          - "     ansible-playbook playbooks/generate-certificate-report.yml"
+          - "📊 Generate Report:"
+          - "   ansible-playbook playbooks/generate-certificate-report.yml"
           - ""
-          - "  3. View the HTML dashboard:"
-          - "     open ~/vault-cert-reports/certificate-report-latest.html"
-          - ""
-          - "  4. You should see a realistic distribution:"
-          - "     - 2 EXPIRED certificates (red)"
-          - "     - 2 CRITICAL certificates (orange)"
-          - "     - 1 WARNING certificate (yellow)"
-          - "     - 3 HEALTHY certificates (green)"
-          - ""
-          - "Alternative - Skip Wait (Immediate Demo):"
-          - "  If you can't wait 2-3 hours, you can manually modify the"
-          - "  Vault KV data to set past expiry dates for database servers."
-          - "  See: vault kv patch secrets/certificates/database-server-01"
+          - "🖥️  View Dashboard:"
+          - "   open ~/vault-cert-reports/certificate-report-latest.html"
           - ""
           - "═══════════════════════════════════════════════════════════"

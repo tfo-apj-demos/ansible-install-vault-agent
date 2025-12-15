@@ -12,88 +12,152 @@
     name:
       - tpm2-tools
       - tpm2-tss
+      - tpm2-abrmd          # TPM2 Access Broker & Resource Manager
       - openssl
       - unzip
       - curl
     state: present
 
-# Add ansible user to tss group (needed for TPM access)
-- name: Add ansible user to tss group
+# Add root user to tss group (needed for TPM access)
+- name: Add root user to tss group for TPM access
   ansible.builtin.user:
-    name: "{{ ansible_user }}"
+    name: root
     groups: tss
     append: true
 
-# Add TPM2 provider config to OpenSSL
-- name: Add TPM2 provider config to OpenSSL
-  ansible.builtin.blockinfile:
-    path: /etc/ssl/openssl.cnf
-    block: |
-      [openssl_init]
-      providers = provider_sect
+# Ensure TPM2 ABRMD service is enabled and running
+- name: Enable and start TPM2 ABRMD service
+  ansible.builtin.systemd:
+    name: tpm2-abrmd
+    enabled: true
+    state: started
+  ignore_errors: true  # Some systems may not use abrmd
 
-      [provider_sect]
-      default = default_sect
-      tpm2 = tpm2_sect
+# Create secure directory for TPM key artifacts
+- name: Create secure directory for TPM artifacts
+  ansible.builtin.file:
+    path: /root/tpm
+    state: directory
+    mode: "0700"
+    owner: root
+    group: root
 
-      [tpm2_sect]
-      module = /usr/lib64/ossl-modules/tpm2.so
-    marker: "# {mark} TPM2 Provider Setup"
+# Force regeneration - remove old TPM artifacts if requested
+- name: Remove old TPM artifacts for regeneration
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /root/tpm/primary.ctx
+    - /root/tpm/key.pub
+    - /root/tpm/key.priv
+    - /root/tpm/key.ctx
+    - /root/tpm/tpm_csr.pem
+    - /root/tpm/tpm_public.pem
+  when: vault_tpm_force_regenerate | default(false)
 
-# Create TPM2 primary key context
+# Evict existing persistent key at handle 0x81000000 if regenerating
+- name: Evict existing persistent TPM key if it exists
+  ansible.builtin.command: tpm2_evictcontrol -C o -c 0x81000000
+  failed_when: false  # Ignore errors if handle is not in use
+  changed_when: false
+  when: vault_tpm_force_regenerate | default(false)
+
+# Create TPM2 primary key context (endorsement hierarchy)
 - name: Create TPM2 primary key context
-  ansible.builtin.command: tpm2_createprimary -C o -g sha256 -G rsa -c /root/primary.ctx
+  ansible.builtin.command: >
+    tpm2_createprimary -C o -g sha256 -G rsa
+    -c /root/tpm/primary.ctx
   args:
-    creates: /root/primary.ctx
+    creates: "{{ '/root/tpm/primary.ctx' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
 
-# Create TPM2 keypair
-- name: Create TPM2 keypair
-  ansible.builtin.command: tpm2_create -C /root/primary.ctx -g sha256 -G rsa -u /root/key.pub -r /root/key.priv
+# Create TPM2 keypair (RSA 2048 for TLS compatibility)
+- name: Create TPM2 keypair for certificate authentication
+  ansible.builtin.command: >
+    tpm2_create -C /root/tpm/primary.ctx
+    -g sha256 -G rsa
+    -u /root/tpm/key.pub
+    -r /root/tpm/key.priv
   args:
-    creates: /root/key.pub
+    creates: "{{ '/root/tpm/key.pub' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
 
-# Load and persist TPM2 key
-- name: Load and persist TPM2 key
+# Load TPM2 key into TPM
+- name: Load TPM2 key into TPM context
+  ansible.builtin.command: >
+    tpm2_load -C /root/tpm/primary.ctx
+    -u /root/tpm/key.pub
+    -r /root/tpm/key.priv
+    -c /root/tpm/key.ctx
+  args:
+    creates: "{{ '/root/tpm/key.ctx' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+
+# Persist TPM2 key to handle 0x81000000
+- name: Persist TPM2 key to persistent handle
+  ansible.builtin.command: >
+    tpm2_evictcontrol -C o
+    -c /root/tpm/key.ctx
+    0x81000000
+  args:
+    creates: "{{ '/root/tpm/key.ctx' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+  register: evict_result
+  failed_when:
+    - evict_result.rc != 0
+    - "'already exists' not in evict_result.stderr"
+
+# Read the public key from TPM and export to PEM format
+- name: Export TPM public key to PEM format
+  ansible.builtin.command: >
+    tpm2_readpublic -c 0x81000000
+    -f pem
+    -o /root/tpm/tpm_public.pem
+  args:
+    creates: "{{ '/root/tpm/tpm_public.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+
+# Generate CSR using tpm2-tools (no OpenSSL provider needed)
+- name: Generate CSR using TPM key via tpm2-tools
   ansible.builtin.shell: |
-    tpm2_load -C /root/primary.ctx -u /root/key.pub -r /root/key.priv -c /root/key.ctx
-    tpm2_evictcontrol -C o -c /root/key.ctx 0x81000000
+    tpm2_createcsr -c 0x81000000 \
+      -g sha256 \
+      -s "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
+      -o /root/tpm/tpm_csr.pem
   args:
-    creates: /root/key.ctx
-
-# Generate CSR using TPM key
-- name: Generate CSR using TPM key
-  ansible.builtin.shell: >
-    openssl req -new
-    -provider tpm2 -provider default
-    -propquery '?provider=tpm2'
-    -key handle:0x81000000 -keyform tpm2
-    -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
-    -out '/root/tpm_csr.pem'
-  args:
-    creates: /root/tpm_csr.pem
+    creates: "{{ '/root/tpm/tpm_csr.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
 
 # Ensure CSR was created successfully
-- name: Check if tpm_csr.pem exists
+- name: Check if TPM CSR exists
   ansible.builtin.stat:
-    path: /root/tpm_csr.pem
+    path: /root/tpm/tpm_csr.pem
   register: vault_tpm_csr_stat
   failed_when: not vault_tpm_csr_stat.stat.exists
   changed_when: false
 
 # Slurp CSR content from remote host
-- name: Slurp CSR content from remote host
+- name: Read CSR content from remote host
   ansible.builtin.slurp:
-    src: /root/tpm_csr.pem
+    src: /root/tpm/tpm_csr.pem
   register: vault_tpm_remote_csr_data
 
-# Fail if CSR could not be read from remote host
-- name: Fail if CSR could not be read from remote host
+# Validate CSR was read successfully
+- name: Validate CSR was read successfully
   ansible.builtin.fail:
-    msg: "Failed to read CSR file /root/tpm_csr.pem from remote host. Check file existence and permissions."
+    msg: "Failed to read CSR file /root/tpm/tpm_csr.pem from remote host. Check file existence and permissions."
   when: vault_tpm_remote_csr_data.content is not defined or vault_tpm_remote_csr_data.content | length == 0
 
-# Set a custom fact to pass the CSR data to the next role
-- name: Set remote CSR data as a fact
+# Set custom facts to pass metadata to subsequent roles
+- name: Set remote CSR data and TPM metadata as facts
   ansible.builtin.set_fact:
     vault_tpm_remote_csr_data_fact: "{{ vault_tpm_remote_csr_data }}"
-    vault_tpm_private_key_path: "handle:0x81000000"  # TPM handle reference
+    vault_tpm_private_key_path: "handle:0x81000000"  # TPM persistent handle
+    vault_tpm_key_type: "tpm"  # Hardware-backed key
+    vault_tpm_public_key_path: "/root/tpm/tpm_public.pem"
+
+# Display success message with TPM details
+- name: Display TPM key generation summary
+  ansible.builtin.debug:
+    msg:
+      - "✅ TPM private key and CSR generated for {{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+      - "🔐 SECURITY: Using hardware-backed TPM key"
+      - "TPM Handle: 0x81000000 (persistent)"
+      - "Public Key: /root/tpm/tpm_public.pem"
+      - "CSR Location: /root/tpm/tpm_csr.pem"
+      - "Protection: Hardware TPM 2.0 (key cannot be extracted)"

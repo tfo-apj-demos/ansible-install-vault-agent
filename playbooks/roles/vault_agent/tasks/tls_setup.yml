@@ -20,40 +20,37 @@
   when: connection_wait is succeeded
 
 - block:
-    # Ensure private key is in correct location with correct permissions
-    # vault_tpm role creates it at /etc/vault.d/private-key.pem
-    - name: Check if private key exists from vault_tpm role
+    # Ensure private key has correct permissions (if it's a file)
+    # For TPM keys (handle:0x81000000), this task will be skipped
+    # For software keys (/etc/vault.d/private-key.pem), permissions are set
+    - name: Check if private key is a file (not TPM handle)
       stat:
         path: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem') }}"
       register: private_key_stat
+      when: not (hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem')).startswith('handle:')
 
-    - name: Ensure private key has correct permissions
+    - name: Ensure private key file has correct permissions
       file:
         path: "{{ hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem') }}"
         mode: "0600"
         owner: root
         group: root
-      when: private_key_stat.stat.exists
-    - name: Check if signed certificate exists from vault_sign role
+      when:
+        - not (hostvars[inventory_hostname].vault_tpm_private_key_path | default('/etc/vault.d/private-key.pem')).startswith('handle:')
+        - private_key_stat.stat.exists | default(false)
+
+    # Verify certificates exist in /etc/vault.d/ (vault_sign role should have copied them)
+    - name: Verify signed certificate exists
       stat:
-        path: "{{ cert_dir | default('/etc/ssl/private') }}/cert.pem"
-      register: signed_cert_stat
+        path: /etc/vault.d/cert.pem
+      register: vault_cert_stat
+      failed_when: not vault_cert_stat.stat.exists
 
-    - name: Copy signed certificate to Vault Agent directory
-      copy:
-        src: "{{ cert_dir | default('/etc/ssl/private') }}/cert.pem" 
-        dest: /etc/vault.d/cert.pem
-        mode: "0644"
-        remote_src: yes
-      when: signed_cert_stat.stat.exists
-
-    - name: Copy CA certificate to Vault Agent directory
-      copy:
-        src: "{{ cert_dir | default('/etc/ssl/private') }}/ca.pem"
-        dest: /etc/vault.d/ca.pem
-        mode: "0644"
-        remote_src: yes
-      when: signed_cert_stat.stat.exists
+    - name: Verify CA certificate exists
+      stat:
+        path: /etc/vault.d/ca.pem
+      register: vault_ca_stat
+      failed_when: not vault_ca_stat.stat.exists
 
     # Create certificate renewal templates
     - name: Create templates directory

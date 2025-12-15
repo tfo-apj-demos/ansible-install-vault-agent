@@ -6,7 +6,10 @@
   gather_facts: false
   vars:
     # Control variables for the flow
-    vault_tpm_simplified: "{{ vault_tpm_use_simplified | default(true) }}"  # Default to simplified approach
+    # Set vault_tpm_use_simplified=false to use hardware TPM (requires TPM 2.0)
+    # Set vault_tpm_use_simplified=true to use software-based keys (demo/testing)
+    #vault_tpm_simplified: "{{ vault_tpm_use_simplified | default(true) }}"
+    vault_tpm_simplified: false
     vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
     domain: "{{ target_domain | default('hashicorp.local') }}"
   roles:

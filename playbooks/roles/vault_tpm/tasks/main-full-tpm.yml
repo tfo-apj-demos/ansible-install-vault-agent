@@ -1,5 +1,11 @@
 ---
 # roles/vault_tpm/tasks/main-full-tpm.yml - Full TPM integration
+
+# Gather facts if not already gathered (needed for ansible_os_family)
+- name: Gather facts for OS detection
+  ansible.builtin.setup:
+  when: ansible_os_family is not defined
+
 # Ensure TPM and Vault dependencies are installed on the remote VM
 - name: Enable EPEL repository for TPM tools
   ansible.builtin.package:
@@ -12,11 +18,18 @@
     name:
       - tpm2-tools
       - tpm2-tss
-      - tpm2-abrmd          # TPM2 Access Broker & Resource Manager
       - openssl
       - unzip
       - curl
     state: present
+
+# Install tpm2-abrmd if available (optional - RHEL 9 uses in-kernel resource manager)
+- name: Install TPM2 ABRMD (optional)
+  ansible.builtin.package:
+    name: tpm2-abrmd
+    state: present
+  ignore_errors: true
+  register: abrmd_install
 
 # Add root user to tss group (needed for TPM access)
 - name: Add root user to tss group for TPM access
@@ -25,13 +38,14 @@
     groups: tss
     append: true
 
-# Ensure TPM2 ABRMD service is enabled and running
+# Ensure TPM2 ABRMD service is enabled and running (only if package installed)
 - name: Enable and start TPM2 ABRMD service
   ansible.builtin.systemd:
     name: tpm2-abrmd
     enabled: true
     state: started
-  ignore_errors: true  # Some systems may not use abrmd
+  when: abrmd_install is succeeded
+  ignore_errors: true  # Service may not exist even if package installed
 
 # Create secure directory for TPM key artifacts
 - name: Create secure directory for TPM artifacts

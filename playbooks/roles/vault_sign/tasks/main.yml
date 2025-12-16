@@ -45,6 +45,7 @@
 # Update system CA trust store to include Vault CA
 - name: Update CA trust store to include Vault CA certificate
   ansible.builtin.command: update-ca-trust extract
+  become: true
   changed_when: false
 
 # Debug: Check certificate trust

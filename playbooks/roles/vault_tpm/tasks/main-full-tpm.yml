@@ -211,17 +211,45 @@
   changed_when: false
   when: tpm2_createcsr_check.rc != 0
 
+- name: Get tpm2_certifyX509certutil help to determine flags
+  ansible.builtin.shell: tpm2_certifyX509certutil --help 2>&1 || tpm2_certifyX509certutil -h 2>&1 || echo "No help available"
+  register: certifyX509_help
+  failed_when: false
+  changed_when: false
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc == 0
+
+- name: Display tpm2_certifyX509certutil usage for debugging
+  ansible.builtin.debug:
+    msg: "{{ certifyX509_help.stdout_lines[:20] | default(['Help not available']) }}"
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc == 0
+
 - name: Generate CSR using tpm2_certifyX509certutil
   ansible.builtin.shell: |
+    # Try different flag combinations based on tpm2-tools version
+    # Newer versions use different syntax
     tpm2_certifyX509certutil \
-      -c 0x81000000 \
-      -g sha256 \
-      -d sha256 \
-      -X \
+      0x81000000 \
+      --halg sha256 \
       -o /root/tpm/tpm_csr.pem \
-      -f pem \
-      --csr \
-      --dn "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+      --subject "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" 2>/dev/null ||
+
+    # Fallback: Try with -p flag for persistent handle
+    tpm2_certifyX509certutil \
+      -p 0x81000000 \
+      -g sha256 \
+      -o /root/tpm/tpm_csr.pem \
+      --subject "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" 2>/dev/null ||
+
+    # Another fallback: older syntax
+    tpm2_certifyX509certutil \
+      -k 0x81000000 \
+      -g sha256 \
+      -o /root/tpm/tpm_csr.pem \
+      -s "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
   args:
     creates: /root/tpm/tpm_csr.pem
   when:

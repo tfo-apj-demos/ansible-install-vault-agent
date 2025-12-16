@@ -1,0 +1,26 @@
+---
+# Quick playbook to check TPM tools version
+- name: Check TPM tools version
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Get tpm2-tools version
+      ansible.builtin.shell: |
+        echo "=== TPM Tools Version ==="
+        rpm -q tpm2-tools
+        echo ""
+        echo "=== Available tpm2 commands ==="
+        ls /usr/bin/tpm2_* | grep -E "(createcsr|sign)" || echo "No CSR-related commands found"
+        echo ""
+        echo "=== OpenSSL version ==="
+        openssl version
+        echo ""
+        echo "=== Available engines/providers ==="
+        ls -la /usr/lib64/engines* 2>/dev/null || echo "No engines directory"
+        ls -la /usr/lib64/ossl-modules* 2>/dev/null || echo "No providers directory"
+      register: tpm_info
+
+    - name: Display TPM environment info
+      ansible.builtin.debug:
+        msg: "{{ tpm_info.stdout_lines }}"

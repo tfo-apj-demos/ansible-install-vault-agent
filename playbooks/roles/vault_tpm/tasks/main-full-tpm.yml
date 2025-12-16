@@ -28,7 +28,9 @@
     name:
       - tpm2-tools
       - tpm2-tss
-      - tpm2-tss-engine  # For OpenSSL integration (fallback CSR generation)
+      - tpm2-pkcs11       # PKCS#11 interface for TPM
+      - tpm2-pkcs11-tools # Tools for managing PKCS#11 tokens
+      - gnutls-utils      # Provides p11tool for CSR generation
       - openssl
       - unzip
       - curl
@@ -143,12 +145,27 @@
   args:
     creates: /root/tpm/tpm_public.pem
 
+# Get tpm2-tools version for diagnostics
+- name: Check tpm2-tools version
+  ansible.builtin.shell: rpm -q tpm2-tools --qf '%{VERSION}'
+  register: tpm2_tools_version
+  failed_when: false
+  changed_when: false
+
 # Check if tpm2_createcsr command is available (tpm2-tools 5.0+)
 - name: Check if tpm2_createcsr is available
   ansible.builtin.command: which tpm2_createcsr
   register: tpm2_createcsr_check
   failed_when: false
   changed_when: false
+
+# Display version information
+- name: Display TPM tools version info
+  ansible.builtin.debug:
+    msg:
+      - "tpm2-tools version: {{ tpm2_tools_version.stdout | default('unknown') }}"
+      - "tpm2_createcsr available: {{ tpm2_createcsr_check.rc == 0 }}"
+      - "Note: tpm2_createcsr requires tpm2-tools 5.0 or higher"
 
 # Generate CSR using tpm2_createcsr if available (tpm2-tools 5.0+)
 - name: Generate CSR using TPM key via tpm2_createcsr
@@ -161,43 +178,82 @@
     creates: /root/tpm/tpm_csr.pem
   when: tpm2_createcsr_check.rc == 0
 
-# Fallback: Generate CSR using OpenSSL with TPM handle (older tpm2-tools)
-- name: Generate CSR using OpenSSL and TPM key (fallback method)
+# Fallback: Use tpm2-pkcs11 with p11tool for CSR generation (older tpm2-tools)
+- name: Initialize tpm2-pkcs11 store
   ansible.builtin.shell: |
-    # Create OpenSSL config for TPM key
-    cat > /root/tpm/tpm_openssl.cnf <<EOF
-    openssl_conf = openssl_init
+    export TPM2_PKCS11_STORE=/root/tpm/pkcs11-store
+    mkdir -p $TPM2_PKCS11_STORE
 
-    [openssl_init]
-    engines = engine_section
+    # Check if already initialized
+    if [ ! -f "$TPM2_PKCS11_STORE/tpm2_pkcs11.sqlite3" ]; then
+      tpm2_ptool init --path=$TPM2_PKCS11_STORE
+    fi
+  args:
+    creates: /root/tpm/pkcs11-store/tpm2_pkcs11.sqlite3
+  when: tpm2_createcsr_check.rc != 0
 
-    [engine_section]
-    tpm2tss = tpm2tss_section
+- name: Create tpm2-pkcs11 token
+  ansible.builtin.shell: |
+    export TPM2_PKCS11_STORE=/root/tpm/pkcs11-store
 
-    [tpm2tss_section]
-    engine_id = tpm2tss
-    dynamic_path = /usr/lib64/engines-3/libtpm2tss.so
-    default_algorithms = ALL
-    init = 1
+    # Check if token already exists
+    if ! tpm2_ptool listtokens --path=$TPM2_PKCS11_STORE 2>/dev/null | grep -q "vault-token"; then
+      tpm2_ptool addtoken \
+        --pid=1 \
+        --label=vault-token \
+        --userpin=1234 \
+        --sopin=5678 \
+        --path=$TPM2_PKCS11_STORE
+    fi
+  register: pkcs11_token_result
+  changed_when: "'vault-token' not in pkcs11_token_result.stdout"
+  when: tpm2_createcsr_check.rc != 0
 
-    [req]
-    distinguished_name = req_dn
-    prompt = no
+- name: Create TPM key via tpm2-pkcs11
+  ansible.builtin.shell: |
+    export TPM2_PKCS11_STORE=/root/tpm/pkcs11-store
 
-    [req_dn]
-    CN = {{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}
-    EOF
+    # Check if key already exists
+    if ! tpm2_ptool listobjects --label=vault-token --path=$TPM2_PKCS11_STORE 2>/dev/null | grep -q "vault-key"; then
+      tpm2_ptool addkey \
+        --label=vault-token \
+        --userpin=1234 \
+        --algorithm=rsa2048 \
+        --key-label=vault-key \
+        --path=$TPM2_PKCS11_STORE
+    fi
+  register: pkcs11_key_result
+  changed_when: "'vault-key' not in pkcs11_key_result.stdout"
+  when: tpm2_createcsr_check.rc != 0
 
-    # Generate CSR using OpenSSL with TPM engine
-    OPENSSL_CONF=/root/tpm/tpm_openssl.cnf openssl req \
-      -new \
-      -engine tpm2tss \
-      -keyform engine \
-      -key 0x81000000 \
-      -out /root/tpm/tpm_csr.pem \
-      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+- name: Generate CSR using p11tool with TPM-backed key
+  ansible.builtin.shell: |
+    export TPM2_PKCS11_STORE=/root/tpm/pkcs11-store
+    export GNUTLS_PIN=1234
+
+    # Find the PKCS#11 key URI
+    KEY_URI=$(p11tool --provider=/usr/lib64/pkcs11/libtpm2_pkcs11.so \
+      --list-privkeys --login 2>/dev/null | \
+      grep "pkcs11:" | head -1 | awk '{print $2}')
+
+    if [ -z "$KEY_URI" ]; then
+      echo "ERROR: Could not find PKCS#11 key URI"
+      exit 1
+    fi
+
+    # Generate CSR using p11tool
+    p11tool --provider=/usr/lib64/pkcs11/libtpm2_pkcs11.so \
+      --generate-request \
+      --load-privkey "$KEY_URI" \
+      --login \
+      --outfile=/root/tpm/tpm_csr.pem \
+      --dn="CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+
+    echo "CSR generated successfully at /root/tpm/tpm_csr.pem"
   args:
     creates: /root/tpm/tpm_csr.pem
+  environment:
+    GNUTLS_PIN: "1234"
   when: tpm2_createcsr_check.rc != 0
 
 # Ensure CSR was created successfully
@@ -224,8 +280,9 @@
 - name: Set remote CSR data and TPM metadata as facts
   ansible.builtin.set_fact:
     vault_tpm_remote_csr_data_fact: "{{ vault_tpm_remote_csr_data }}"
-    vault_tpm_private_key_path: "handle:0x81000000"  # TPM persistent handle
+    vault_tpm_private_key_path: "{{ 'pkcs11:model=SW%20%20%20TPM;token=vault-token;object=vault-key;type=private' if tpm2_createcsr_check.rc != 0 else 'handle:0x81000000' }}"
     vault_tpm_key_type: "tpm"  # Hardware-backed key
+    vault_tpm_key_method: "{{ 'pkcs11' if tpm2_createcsr_check.rc != 0 else 'native' }}"
     vault_tpm_public_key_path: "/root/tpm/tpm_public.pem"
 
 # Display success message with TPM details
@@ -234,7 +291,8 @@
     msg:
       - "✅ TPM private key and CSR generated for {{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
       - "🔐 SECURITY: Using hardware-backed TPM key"
-      - "TPM Handle: 0x81000000 (persistent)"
+      - "Method: {{ 'tpm2-pkcs11' if tpm2_createcsr_check.rc != 0 else 'tpm2-tools native' }}"
+      - "Key Reference: {{ 'PKCS#11 vault-key' if tpm2_createcsr_check.rc != 0 else 'TPM Handle 0x81000000' }}"
       - "Public Key: /root/tpm/tpm_public.pem"
       - "CSR Location: /root/tpm/tpm_csr.pem"
       - "Protection: Hardware TPM 2.0 (key cannot be extracted)"

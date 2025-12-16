@@ -117,18 +117,21 @@
   args:
     creates: "{{ '/root/tpm/key.ctx' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
 
-# Persist TPM2 key to handle 0x81000000
+# Check if handle 0x81000000 already has a key
+- name: Check if TPM handle 0x81000000 is already in use
+  ansible.builtin.command: tpm2_readpublic -c 0x81000000
+  register: handle_check
+  failed_when: false
+  changed_when: false
+
+# Persist TPM2 key to handle 0x81000000 (only if handle is not in use)
 - name: Persist TPM2 key to persistent handle
   ansible.builtin.command: >
     tpm2_evictcontrol -C o
     -c /root/tpm/key.ctx
     0x81000000
-  args:
-    creates: "{{ '/root/tpm/key.ctx' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+  when: handle_check.rc != 0  # Only if handle is empty
   register: evict_result
-  failed_when:
-    - evict_result.rc != 0
-    - "'already exists' not in evict_result.stderr"
 
 # Read the public key from TPM and export to PEM format
 - name: Export TPM public key to PEM format
@@ -137,7 +140,7 @@
     -f pem
     -o /root/tpm/tpm_public.pem
   args:
-    creates: "{{ '/root/tpm/tpm_public.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+    creates: /root/tpm/tpm_public.pem
 
 # Generate CSR using tpm2-tools (no OpenSSL provider needed)
 - name: Generate CSR using TPM key via tpm2-tools
@@ -147,7 +150,7 @@
       -s "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
       -o /root/tpm/tpm_csr.pem
   args:
-    creates: "{{ '/root/tpm/tpm_csr.pem' if not (vault_tpm_force_regenerate | default(false)) else omit }}"
+    creates: /root/tpm/tpm_csr.pem
 
 # Ensure CSR was created successfully
 - name: Check if TPM CSR exists

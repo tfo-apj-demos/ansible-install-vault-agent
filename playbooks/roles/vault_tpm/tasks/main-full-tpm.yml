@@ -211,50 +211,52 @@
   changed_when: false
   when: tpm2_createcsr_check.rc != 0
 
-- name: Get tpm2_certifyX509certutil help to determine flags
-  ansible.builtin.shell: tpm2_certifyX509certutil --help 2>&1 || tpm2_certifyX509certutil -h 2>&1 || echo "No help available"
-  register: certifyX509_help
-  failed_when: false
-  changed_when: false
-  when:
-    - tpm2_createcsr_check.rc != 0
-    - tpm2_certifyX509_check.rc == 0
+# Check if OpenSSL TPM2 provider module exists (from previous working setup)
+- name: Check if TPM2 OpenSSL provider exists
+  ansible.builtin.stat:
+    path: /usr/lib64/ossl-modules/tpm2.so
+  register: tpm2_provider_stat
+  when: tpm2_createcsr_check.rc != 0
 
-- name: Display tpm2_certifyX509certutil usage for debugging
+- name: Display TPM2 provider availability
   ansible.builtin.debug:
-    msg: "{{ certifyX509_help.stdout_lines[:20] | default(['Help not available']) }}"
+    msg: "TPM2 OpenSSL provider available: {{ tpm2_provider_stat.stat.exists | default(false) }}"
+  when: tpm2_createcsr_check.rc != 0
+
+# Add TPM2 provider config to OpenSSL (from previous working version)
+- name: Add TPM2 provider config to OpenSSL
+  ansible.builtin.blockinfile:
+    path: /etc/ssl/openssl.cnf
+    block: |
+      [openssl_init]
+      providers = provider_sect
+
+      [provider_sect]
+      default = default_sect
+      tpm2 = tpm2_sect
+
+      [tpm2_sect]
+      module = /usr/lib64/ossl-modules/tpm2.so
+    marker: "# {mark} TPM2 Provider Setup"
   when:
     - tpm2_createcsr_check.rc != 0
-    - tpm2_certifyX509_check.rc == 0
+    - tpm2_provider_stat.stat.exists | default(false)
 
-- name: Generate CSR using tpm2_certifyX509certutil
+# Generate CSR using OpenSSL with TPM2 provider (OLD WORKING METHOD)
+- name: Generate CSR using OpenSSL with TPM2 provider
   ansible.builtin.shell: |
-    # Try different flag combinations based on tpm2-tools version
-    # Newer versions use different syntax
-    tpm2_certifyX509certutil \
-      0x81000000 \
-      --halg sha256 \
-      -o /root/tpm/tpm_csr.pem \
-      --subject "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" 2>/dev/null ||
-
-    # Fallback: Try with -p flag for persistent handle
-    tpm2_certifyX509certutil \
-      -p 0x81000000 \
-      -g sha256 \
-      -o /root/tpm/tpm_csr.pem \
-      --subject "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" 2>/dev/null ||
-
-    # Another fallback: older syntax
-    tpm2_certifyX509certutil \
-      -k 0x81000000 \
-      -g sha256 \
-      -o /root/tpm/tpm_csr.pem \
-      -s "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+    openssl req -new \
+      -provider tpm2 -provider default \
+      -propquery '?provider=tpm2' \
+      -key handle:0x81000000 \
+      -keyform engine \
+      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
+      -out /root/tpm/tpm_csr.pem
   args:
     creates: /root/tpm/tpm_csr.pem
   when:
     - tpm2_createcsr_check.rc != 0
-    - tpm2_certifyX509_check.rc == 0
+    - tpm2_provider_stat.stat.exists | default(false)
 
 # Fallback: Use tpm2-pkcs11 with p11tool for CSR generation (if available)
 - name: Initialize tpm2-pkcs11 store

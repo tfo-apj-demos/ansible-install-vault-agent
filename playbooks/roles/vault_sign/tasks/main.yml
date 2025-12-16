@@ -42,24 +42,7 @@
     name: pip-system-certs
     executable: /usr/bin/pip3
 
-# Update system CA trust store to include Vault CA
-- name: Update CA trust store to include Vault CA certificate
-  ansible.builtin.command: update-ca-trust extract
-  become: true
-  changed_when: false
-
-# Debug: Check certificate trust
-- name: Check if the Vault CA is in the trust store
-  ansible.builtin.command: update-ca-trust list
-  register: ca_trust_check
-  changed_when: false
-  failed_when: false
-
-- name: Display Vault CA trust status
-  debug:
-    msg: "Vault CA trust store: {{ ca_trust_check.stdout }}"
-
-# Test Vault connectivity
+# Test Vault connectivity (use environment variable for CA cert)
 - name: Test Vault connectivity
   ansible.builtin.uri:
     url: "{{ vault_addr }}/v1/sys/health"
@@ -69,6 +52,9 @@
     ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
     status_code: [200, 473]  # Accept both active (200) and standby (473) nodes
     follow_redirects: all  # Important: Follow redirects for write operations
+  environment:
+    REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    CURL_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: vault_health
   retries: 4
   delay: 5
@@ -124,6 +110,9 @@
     secret_id: "{{ secret_id }}"  # This is passed in via AAP credentials
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  environment:
+    REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    CURL_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: signed_cert
 
 - name: Debug the signed certificate

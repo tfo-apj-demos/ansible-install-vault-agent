@@ -60,7 +60,9 @@
     method: GET
     return_content: true
     validate_certs: true
-    ca_path: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  environment:
+    REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    CURL_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: vault_sign_health
   retries: 4
   delay: 5
@@ -116,6 +118,9 @@
     secret_id: "{{ secret_id }}"  # This is passed in via AAP credentials
     validate_certs: true
     ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  environment:
+    REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    CURL_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
   register: signed_cert
 
 - name: Debug the signed certificate

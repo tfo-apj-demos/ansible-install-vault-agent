@@ -46,6 +46,16 @@
   ignore_errors: true
   register: abrmd_install
 
+# Ensure tpm2-pkcs11 packages are installed (needed for CSR fallback)
+- name: Install tpm2-pkcs11 packages for CSR generation
+  ansible.builtin.package:
+    name:
+      - tpm2-pkcs11
+      - tpm2-pkcs11-tools
+      - gnutls-utils
+    state: present
+  ignore_errors: true
+
 # Add root user to tss group (needed for TPM access)
 - name: Add root user to tss group for TPM access
   ansible.builtin.user:
@@ -154,10 +164,23 @@
 
 # Check if tpm2_createcsr command is available (tpm2-tools 5.0+)
 - name: Check if tpm2_createcsr is available
-  ansible.builtin.command: which tpm2_createcsr
+  ansible.builtin.shell: |
+    # Try multiple methods to find tpm2_createcsr
+    which tpm2_createcsr 2>/dev/null || \
+    command -v tpm2_createcsr 2>/dev/null || \
+    ls /usr/bin/tpm2_createcsr 2>/dev/null || \
+    ls /usr/local/bin/tpm2_createcsr 2>/dev/null
   register: tpm2_createcsr_check
   failed_when: false
   changed_when: false
+
+# List available tpm2 CSR-related commands if tpm2_createcsr not found
+- name: List available tpm2 commands for diagnostics
+  ansible.builtin.shell: ls -1 /usr/bin/tpm2_* | grep -E "(csr|cert|sign)" || echo "No CSR-related commands found"
+  register: tpm2_commands_list
+  failed_when: false
+  changed_when: false
+  when: tpm2_createcsr_check.rc != 0
 
 # Display version information
 - name: Display TPM tools version info
@@ -165,7 +188,9 @@
     msg:
       - "tpm2-tools version: {{ tpm2_tools_version.stdout | default('unknown') }}"
       - "tpm2_createcsr available: {{ tpm2_createcsr_check.rc == 0 }}"
-      - "Note: tpm2_createcsr requires tpm2-tools 5.0 or higher"
+      - "tpm2_createcsr path: {{ tpm2_createcsr_check.stdout | default('not found') }}"
+      - "Available CSR commands: {{ tpm2_commands_list.stdout_lines | default([]) | join(', ') if tpm2_createcsr_check.rc != 0 else 'using tpm2_createcsr' }}"
+      - "Fallback: Will use tpm2-pkcs11 if tpm2_createcsr unavailable"
 
 # Generate CSR using tpm2_createcsr if available (tpm2-tools 5.0+)
 - name: Generate CSR using TPM key via tpm2_createcsr

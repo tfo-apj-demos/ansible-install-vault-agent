@@ -203,7 +203,32 @@
     creates: /root/tpm/tpm_csr.pem
   when: tpm2_createcsr_check.rc == 0
 
-# Fallback: Use tpm2-pkcs11 with p11tool for CSR generation (older tpm2-tools)
+# Fallback: Use tpm2_certifyX509certutil if available (alternative in tpm2-tools 5.x)
+- name: Check if tpm2_certifyX509certutil is available
+  ansible.builtin.command: which tpm2_certifyX509certutil
+  register: tpm2_certifyX509_check
+  failed_when: false
+  changed_when: false
+  when: tpm2_createcsr_check.rc != 0
+
+- name: Generate CSR using tpm2_certifyX509certutil
+  ansible.builtin.shell: |
+    tpm2_certifyX509certutil \
+      -c 0x81000000 \
+      -g sha256 \
+      -d sha256 \
+      -X \
+      -o /root/tpm/tpm_csr.pem \
+      -f pem \
+      --csr \
+      --dn "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+  args:
+    creates: /root/tpm/tpm_csr.pem
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc == 0
+
+# Fallback: Use tpm2-pkcs11 with p11tool for CSR generation (if available)
 - name: Initialize tpm2-pkcs11 store
   ansible.builtin.shell: |
     export TPM2_PKCS11_STORE=/root/tpm/pkcs11-store
@@ -215,7 +240,9 @@
     fi
   args:
     creates: /root/tpm/pkcs11-store/tpm2_pkcs11.sqlite3
-  when: tpm2_createcsr_check.rc != 0
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc != 0
 
 - name: Create tpm2-pkcs11 token
   ansible.builtin.shell: |
@@ -232,7 +259,9 @@
     fi
   register: pkcs11_token_result
   changed_when: "'vault-token' not in pkcs11_token_result.stdout"
-  when: tpm2_createcsr_check.rc != 0
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc != 0
 
 - name: Create TPM key via tpm2-pkcs11
   ansible.builtin.shell: |
@@ -249,7 +278,9 @@
     fi
   register: pkcs11_key_result
   changed_when: "'vault-key' not in pkcs11_key_result.stdout"
-  when: tpm2_createcsr_check.rc != 0
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc != 0
 
 - name: Generate CSR using p11tool with TPM-backed key
   ansible.builtin.shell: |
@@ -279,7 +310,9 @@
     creates: /root/tpm/tpm_csr.pem
   environment:
     GNUTLS_PIN: "1234"
-  when: tpm2_createcsr_check.rc != 0
+  when:
+    - tpm2_createcsr_check.rc != 0
+    - tpm2_certifyX509_check.rc != 0
 
 # Ensure CSR was created successfully
 - name: Check if TPM CSR exists

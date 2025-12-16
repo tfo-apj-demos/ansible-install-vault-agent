@@ -244,22 +244,23 @@
 
 # Generate CSR using OpenSSL with TPM2 provider (OLD WORKING METHOD)
 - name: Generate CSR using OpenSSL with TPM2 provider
-  ansible.builtin.shell: |
-    set -e
-    # Try without keyform (providers don't use -keyform)
-    openssl req -new \
-      -provider tpm2 \
-      -provider default \
-      -key handle:0x81000000 \
-      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
-      -out /root/tpm/tpm_csr.pem 2>/dev/null || \
-    openssl req -new \
-      -provider tpm2 \
-      -provider default \
-      -key 0x81000000 \
-      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}" \
-      -out /root/tpm/tpm_csr.pem
-  args:
+  ansible.builtin.shell:
+    cmd: |
+      set -e
+      SUBJECT="/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+      # Try without keyform (providers don't use -keyform)
+      openssl req -new \
+        -provider tpm2 \
+        -provider default \
+        -key handle:0x81000000 \
+        -subj "$SUBJECT" \
+        -out /root/tpm/tpm_csr.pem 2>/dev/null || \
+      openssl req -new \
+        -provider tpm2 \
+        -provider default \
+        -key 0x81000000 \
+        -subj "$SUBJECT" \
+        -out /root/tpm/tpm_csr.pem
     creates: /root/tpm/tpm_csr.pem
   when:
     - tpm2_createcsr_check.rc != 0

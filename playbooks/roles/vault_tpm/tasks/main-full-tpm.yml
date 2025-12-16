@@ -28,6 +28,7 @@
     name:
       - tpm2-tools
       - tpm2-tss
+      - tpm2-tss-engine  # For OpenSSL integration (fallback CSR generation)
       - openssl
       - unzip
       - curl
@@ -142,8 +143,15 @@
   args:
     creates: /root/tpm/tpm_public.pem
 
-# Generate CSR using tpm2-tools (no OpenSSL provider needed)
-- name: Generate CSR using TPM key via tpm2-tools
+# Check if tpm2_createcsr command is available (tpm2-tools 5.0+)
+- name: Check if tpm2_createcsr is available
+  ansible.builtin.command: which tpm2_createcsr
+  register: tpm2_createcsr_check
+  failed_when: false
+  changed_when: false
+
+# Generate CSR using tpm2_createcsr if available (tpm2-tools 5.0+)
+- name: Generate CSR using TPM key via tpm2_createcsr
   ansible.builtin.shell: |
     tpm2_createcsr -c 0x81000000 \
       -g sha256 \
@@ -151,6 +159,46 @@
       -o /root/tpm/tpm_csr.pem
   args:
     creates: /root/tpm/tpm_csr.pem
+  when: tpm2_createcsr_check.rc == 0
+
+# Fallback: Generate CSR using OpenSSL with TPM handle (older tpm2-tools)
+- name: Generate CSR using OpenSSL and TPM key (fallback method)
+  ansible.builtin.shell: |
+    # Create OpenSSL config for TPM key
+    cat > /root/tpm/tpm_openssl.cnf <<EOF
+    openssl_conf = openssl_init
+
+    [openssl_init]
+    engines = engine_section
+
+    [engine_section]
+    tpm2tss = tpm2tss_section
+
+    [tpm2tss_section]
+    engine_id = tpm2tss
+    dynamic_path = /usr/lib64/engines-3/libtpm2tss.so
+    default_algorithms = ALL
+    init = 1
+
+    [req]
+    distinguished_name = req_dn
+    prompt = no
+
+    [req_dn]
+    CN = {{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}
+    EOF
+
+    # Generate CSR using OpenSSL with TPM engine
+    OPENSSL_CONF=/root/tpm/tpm_openssl.cnf openssl req \
+      -new \
+      -engine tpm2tss \
+      -keyform engine \
+      -key 0x81000000 \
+      -out /root/tpm/tpm_csr.pem \
+      -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+  args:
+    creates: /root/tpm/tpm_csr.pem
+  when: tpm2_createcsr_check.rc != 0
 
 # Ensure CSR was created successfully
 - name: Check if TPM CSR exists

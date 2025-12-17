@@ -75,16 +75,30 @@
   when: vault_tpm_helper_demo_tpm2_provider_search.matched > 0
 
 # Step 1: Generate TPM-backed key in TSS2 format
-- name: Generate TPM-backed ECC key in TSS2 format
+- name: Generate TPM-backed ECC key in TSS2 format (verbose)
   ansible.builtin.shell:
     cmd: |
-      openssl genpkey -provider tpm2 -provider default -algorithm EC \
+      set -x
+      # Remove old key if exists
+      rm -f /opt/vault-tpm-demo/client.key.pem
+
+      # Generate key with TPM provider (verbose)
+      openssl genpkey \
+        -provider tpm2 \
+        -provider default \
+        -propquery '?provider=tpm2' \
+        -algorithm EC \
         -pkeyopt ec_paramgen_curve:prime256v1 \
-        -out /opt/vault-tpm-demo/client.key.pem
-    creates: /opt/vault-tpm-demo/client.key.pem
-  environment:
-    OPENSSL_MODULES: "{{ vault_tpm_helper_demo_tpm2_provider_path | dirname }}"
+        -out /opt/vault-tpm-demo/client.key.pem 2>&1
+
+      # Show what was created
+      echo "=== Key file header ==="
+      head -1 /opt/vault-tpm-demo/client.key.pem
   register: vault_tpm_helper_demo_key_gen
+
+- name: Show key generation output
+  ansible.builtin.debug:
+    var: vault_tpm_helper_demo_key_gen.stdout_lines
 
 - name: Verify key is in TSS2 format
   ansible.builtin.command:

@@ -97,6 +97,9 @@
         -client-key /opt/vault-tpm-demo/client.key.pem \
         -vaultaddr {{ vault_addr }} \
         -debug
+  environment:
+    SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca-demo.crt"
+    VAULT_SKIP_VERIFY: "true"
   register: vault_tpm_helper_demo_token_output
   changed_when: false
 

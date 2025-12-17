@@ -65,6 +65,18 @@
   loop:
     - /opt/vault-tpm-demo/client.cert.pem
     - /opt/vault-tpm-demo/client.key.pem
+    - /opt/vault-tpm-demo/ca.pem
+
+- name: Install Vault CA certificate to system trust store
+  ansible.builtin.copy:
+    src: /opt/vault-tpm-demo/ca.pem
+    dest: /etc/pki/ca-trust/source/anchors/vault-ca-demo.crt
+    mode: "0644"
+    remote_src: yes
+
+- name: Update CA trust store
+  ansible.builtin.command: update-ca-trust
+  changed_when: true
 
 - name: Display certificate information
   ansible.builtin.command:
@@ -85,8 +97,6 @@
         -client-key /opt/vault-tpm-demo/client.key.pem \
         -vaultaddr {{ vault_addr }} \
         -debug
-  environment:
-    VAULT_SKIP_VERIFY: "true"  # TEMPORARY: For demo with self-signed certs
   register: vault_tpm_helper_demo_token_output
   changed_when: false
 

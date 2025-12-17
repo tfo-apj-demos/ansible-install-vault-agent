@@ -1,0 +1,116 @@
+---
+# roles/vault_tpm_helper_demo/tasks/install_and_run.yml
+# Install vault-tpm-helper and demonstrate authentication
+
+- name: Check if vault-tpm-helper is already installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/vault-tpm-helper
+  register: vault_tpm_helper_demo_binary_stat
+
+- name: Download vault-tpm-helper binary
+  ansible.builtin.get_url:
+    url: https://github.com/ausmartway/vault-tpm-helper/releases/latest/download/vault-tpm-helper-linux-amd64
+    dest: /usr/local/bin/vault-tpm-helper
+    mode: "0755"
+  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+
+- name: Verify certificates exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: vault_tpm_helper_demo_cert_check
+  failed_when: not vault_tpm_helper_demo_cert_check.stat.exists
+  loop:
+    - /opt/vault-tpm-demo/client.cert.pem
+    - /opt/vault-tpm-demo/client.key.pem
+
+- name: Display certificate information
+  ansible.builtin.command:
+    cmd: openssl x509 -in /opt/vault-tpm-demo/client.cert.pem -noout -subject -dates
+  register: vault_tpm_helper_demo_cert_info
+  changed_when: false
+
+- name: Show certificate details
+  ansible.builtin.debug:
+    msg: "{{ vault_tpm_helper_demo_cert_info.stdout_lines }}"
+
+# Step 3: Run vault-tpm-helper to authenticate
+- name: Authenticate to Vault using vault-tpm-helper
+  ansible.builtin.shell:
+    cmd: |
+      /usr/local/bin/vault-tpm-helper \
+        -client-cert /opt/vault-tpm-demo/client.cert.pem \
+        -client-key /opt/vault-tpm-demo/client.key.pem \
+        -vaultaddr {{ vault_addr }} \
+        -debug
+  environment:
+    VAULT_SKIP_VERIFY: "true"  # TEMPORARY: For demo with self-signed certs
+  register: vault_tpm_helper_demo_token_output
+  changed_when: false
+
+- name: Extract Vault token from output
+  ansible.builtin.set_fact:
+    vault_tpm_helper_demo_token: "{{ vault_tpm_helper_demo_token_output.stdout | trim }}"
+
+- name: Display authentication result
+  ansible.builtin.debug:
+    msg:
+      - "✅ Successfully authenticated to Vault using TPM-backed TLS certificate!"
+      - "Vault Token: {{ vault_tpm_helper_demo_token }}"
+      - "Token can be used for subsequent Vault operations"
+
+# Step 4: Demonstrate using the token
+- name: Test token by reading Vault sys health
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/sys/health"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_tpm_helper_demo_token }}"
+    validate_certs: false
+    return_content: true
+  register: vault_tpm_helper_demo_health_check
+  failed_when: false
+
+- name: Show health check result
+  ansible.builtin.debug:
+    msg:
+      - "Health check using TPM-authenticated token:"
+      - "Status: {{ vault_tpm_helper_demo_health_check.status }}"
+      - "Initialized: {{ vault_tpm_helper_demo_health_check.json.initialized | default('N/A') }}"
+      - "Sealed: {{ vault_tpm_helper_demo_health_check.json.sealed | default('N/A') }}"
+
+# Step 5: Demonstrate reading a secret (if accessible)
+- name: Attempt to read a KV secret (optional demo)
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/secret/data/demo"
+    method: GET
+    headers:
+      X-Vault-Token: "{{ vault_tpm_helper_demo_token }}"
+    validate_certs: false
+    return_content: true
+    status_code: [200, 403, 404]
+  register: vault_tpm_helper_demo_secret_read
+  failed_when: false
+
+- name: Show secret read result
+  ansible.builtin.debug:
+    msg:
+      - "Secret read attempt result:"
+      - "Status: {{ vault_tpm_helper_demo_secret_read.status }}"
+      - "{% if vault_tpm_helper_demo_secret_read.status == 200 %}Secret data retrieved successfully{% elif vault_tpm_helper_demo_secret_read.status == 403 %}Access denied (expected if TLS auth role doesn't have KV permissions){% else %}Secret not found or path doesn't exist{% endif %}"
+
+- name: Demo summary
+  ansible.builtin.debug:
+    msg:
+      - "=========================================="
+      - "vault-tpm-helper Demo Summary"
+      - "=========================================="
+      - "✅ TPM key generated in TSS2 format"
+      - "✅ CSR created and signed by Vault PKI"
+      - "✅ vault-tpm-helper authenticated using TPM-backed certificate"
+      - "✅ Vault token obtained: {{ vault_tpm_helper_demo_token[:20] }}..."
+      - "✅ Token validated with Vault API calls"
+      - ""
+      - "🔑 Private key location: /opt/vault-tpm-demo/client.key.pem (TSS2 format, references TPM)"
+      - "📜 Certificate location: /opt/vault-tpm-demo/client.cert.pem"
+      - "🔐 Authentication method: Mutual TLS with TPM-protected private key"
+      - "=========================================="

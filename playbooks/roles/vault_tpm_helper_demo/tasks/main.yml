@@ -1,0 +1,86 @@
+---
+# roles/vault_tpm_helper_demo/tasks/main.yml
+# Demonstrates vault-tpm-helper for TLS authentication to Vault using TPM-backed keys
+
+- name: Ensure required packages are installed
+  ansible.builtin.package:
+    name:
+      - tpm2-tools
+      - tpm2-openssl
+      - openssl
+      - wget
+      - jq
+    state: present
+  ignore_errors: true
+
+- name: Create demo directory
+  ansible.builtin.file:
+    path: /opt/vault-tpm-demo
+    state: directory
+    mode: "0755"
+
+- name: Check if OpenSSL TPM2 provider exists
+  ansible.builtin.stat:
+    path: /usr/lib64/ossl-modules/tpm2.so
+  register: vault_tpm_helper_demo_tpm2_provider_stat
+
+- name: Configure OpenSSL TPM2 provider
+  ansible.builtin.blockinfile:
+    path: /etc/ssl/openssl.cnf
+    block: |
+      [openssl_init]
+      providers = provider_sect
+
+      [provider_sect]
+      default = default_sect
+      tpm2 = tpm2_sect
+
+      [tpm2_sect]
+      module = /usr/lib64/ossl-modules/tpm2.so
+    marker: "# {mark} TPM2 Provider Setup for vault-tpm-helper demo"
+    backup: yes
+  when: vault_tpm_helper_demo_tpm2_provider_stat.stat.exists
+
+# Step 1: Generate TPM-backed key in TSS2 format
+- name: Generate TPM-backed ECC key in TSS2 format
+  ansible.builtin.shell:
+    cmd: |
+      openssl genpkey -provider tpm2 -algorithm EC \
+        -pkeyopt ec_paramgen_curve:prime256v1 \
+        -out /opt/vault-tpm-demo/client.key.pem
+    creates: /opt/vault-tpm-demo/client.key.pem
+  register: vault_tpm_helper_demo_key_gen
+
+- name: Verify key is in TSS2 format
+  ansible.builtin.command:
+    cmd: head -1 /opt/vault-tpm-demo/client.key.pem
+  register: vault_tpm_helper_demo_key_header
+  changed_when: false
+
+- name: Display key format
+  ansible.builtin.debug:
+    msg: "Key format: {{ vault_tpm_helper_demo_key_header.stdout }}"
+
+- name: Fail if key is not in TSS2 format
+  ansible.builtin.fail:
+    msg: "Key is not in TSS2 format! Expected 'BEGIN TSS2 PRIVATE KEY', got '{{ vault_tpm_helper_demo_key_header.stdout }}'"
+  when: "'TSS2 PRIVATE KEY' not in vault_tpm_helper_demo_key_header.stdout"
+
+# Step 2: Generate CSR from TPM key
+- name: Generate Certificate Signing Request
+  ansible.builtin.shell:
+    cmd: |
+      openssl req -provider default -provider tpm2 -new \
+        -key /opt/vault-tpm-demo/client.key.pem \
+        -out /opt/vault-tpm-demo/client.csr.pem \
+        -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
+    creates: /opt/vault-tpm-demo/client.csr.pem
+
+- name: Read CSR content
+  ansible.builtin.slurp:
+    src: /opt/vault-tpm-demo/client.csr.pem
+  register: vault_tpm_helper_demo_csr_data
+
+- name: Set fact for CSR data
+  ansible.builtin.set_fact:
+    vault_tpm_helper_demo_csr_data_fact: "{{ vault_tpm_helper_demo_csr_data }}"

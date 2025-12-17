@@ -1,0 +1,78 @@
+---
+# Demo playbook for vault-tpm-helper
+# Demonstrates end-to-end TLS authentication to Vault using TPM-backed certificates
+#
+# Usage:
+#   ansible-playbook playbooks/demo-vault-tpm-helper.yml \
+#     -e vault_server_address=https://vault.hashicorp.local:8200 \
+#     -e target_domain=hashicorp.local
+
+# Play 1: Generate TPM key and CSR on target hosts
+- name: Generate TPM-backed key and CSR for vault-tpm-helper demo
+  hosts: all
+  become: true
+  gather_facts: true
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+  roles:
+    - vault_tpm_helper_demo
+
+# Play 2: Sign CSR via Vault (runs on AAP Execution Environment)
+- name: Sign CSR for vault-tpm-helper demo
+  hosts: localhost
+  gather_facts: false
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+    vault_pki_path: "{{ vault_pki_mount_path | default('pki') }}"
+    vault_pki_role: "tls-auth"  # Use tls-auth role for authentication certificates
+    domain: "{{ target_domain | default('hashicorp.local') }}"
+  tasks:
+    - name: Sign CSR for each target host
+      block:
+        - name: Authenticate to Vault and Sign CSR
+          community.hashi_vault.vault_write:
+            url: "{{ vault_addr }}"
+            path: "{{ vault_pki_path }}/sign/{{ vault_pki_role }}"
+            data:
+              csr: "{{ hostvars[item].vault_tpm_helper_demo_csr_data_fact.content | b64decode }}"
+              common_name: "{{ item }}.{{ domain }}"
+              ttl: "168h"  # 7 days
+            auth_method: approle
+            role_id: "{{ role_id }}"
+            secret_id: "{{ secret_id }}"
+            validate_certs: false  # TEMPORARY: For demo
+          register: vault_tpm_helper_demo_signed_cert_result
+
+        - name: Copy signed certificate to target machine
+          ansible.builtin.copy:
+            content: "{{ vault_tpm_helper_demo_signed_cert_result.data.data.certificate }}"
+            dest: /opt/vault-tpm-demo/client.cert.pem
+            mode: "0644"
+          delegate_to: "{{ item }}"
+          become: true
+
+        - name: Copy CA certificate to target machine
+          ansible.builtin.copy:
+            content: "{{ vault_tpm_helper_demo_signed_cert_result.data.data.issuing_ca }}"
+            dest: /opt/vault-tpm-demo/ca.pem
+            mode: "0644"
+          delegate_to: "{{ item }}"
+          become: true
+
+      loop: "{{ groups['all'] }}"
+      loop_control:
+        label: "{{ item }}"
+
+# Play 3: Install vault-tpm-helper and demonstrate authentication
+- name: Run vault-tpm-helper authentication demo
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    vault_addr: "{{ vault_server_address | default('https://vault.hashicorp.local:8200') }}"
+  tasks:
+    - name: Include vault-tpm-helper installation and demo tasks
+      ansible.builtin.include_role:
+        name: vault_tpm_helper_demo
+        tasks_from: install_and_run

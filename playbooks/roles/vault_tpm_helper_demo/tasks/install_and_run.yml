@@ -2,46 +2,60 @@
 # roles/vault_tpm_helper_demo/tasks/install_and_run.yml
 # Install vault-tpm-helper and demonstrate authentication
 
+- name: Detect system architecture
+  ansible.builtin.command: uname -m
+  register: vault_tpm_helper_demo_arch
+  changed_when: false
+
+- name: Show detected architecture
+  ansible.builtin.debug:
+    msg: "System architecture: {{ vault_tpm_helper_demo_arch.stdout }}"
+
 - name: Check if vault-tpm-helper is already installed
   ansible.builtin.stat:
     path: /usr/local/bin/vault-tpm-helper
   register: vault_tpm_helper_demo_binary_stat
 
-- name: Detect system architecture
-  ansible.builtin.command: uname -m
-  register: vault_tpm_helper_demo_arch
-  changed_when: false
-  when: not vault_tpm_helper_demo_binary_stat.stat.exists
-
-- name: Show detected architecture
-  ansible.builtin.debug:
-    msg: "Detected architecture: {{ vault_tpm_helper_demo_arch.stdout }}"
-  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+- name: Remove old vault-tpm-helper if exists (to ensure correct architecture)
+  ansible.builtin.file:
+    path: /usr/local/bin/vault-tpm-helper
+    state: absent
+  when: vault_tpm_helper_demo_binary_stat.stat.exists
 
 - name: Set architecture-specific download URL
   ansible.builtin.set_fact:
     vault_tpm_helper_demo_download_url: "{{ 'https://github.com/ausmartway/vault-tpm-helper/releases/download/v0.1.1/vault-tpm-helper_Linux_x86_64.tar.gz' if vault_tpm_helper_demo_arch.stdout == 'x86_64' else 'https://github.com/ausmartway/vault-tpm-helper/releases/download/v0.1.1/vault-tpm-helper_Linux_arm64.tar.gz' }}"
-  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+
+- name: Show download URL
+  ansible.builtin.debug:
+    msg: "Downloading from: {{ vault_tpm_helper_demo_download_url }}"
 
 - name: Download vault-tpm-helper tarball
   ansible.builtin.get_url:
     url: "{{ vault_tpm_helper_demo_download_url }}"
     dest: /tmp/vault-tpm-helper.tar.gz
     mode: "0644"
-  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+    force: yes
 
 - name: Extract vault-tpm-helper
   ansible.builtin.unarchive:
     src: /tmp/vault-tpm-helper.tar.gz
     dest: /usr/local/bin/
     remote_src: yes
-  when: not vault_tpm_helper_demo_binary_stat.stat.exists
 
 - name: Make vault-tpm-helper executable
   ansible.builtin.file:
     path: /usr/local/bin/vault-tpm-helper
     mode: "0755"
-  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+
+- name: Verify vault-tpm-helper architecture
+  ansible.builtin.command: file /usr/local/bin/vault-tpm-helper
+  register: vault_tpm_helper_demo_file_check
+  changed_when: false
+
+- name: Show vault-tpm-helper file info
+  ansible.builtin.debug:
+    var: vault_tpm_helper_demo_file_check.stdout
 
 - name: Verify certificates exist
   ansible.builtin.stat:

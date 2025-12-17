@@ -7,11 +7,27 @@
     path: /usr/local/bin/vault-tpm-helper
   register: vault_tpm_helper_demo_binary_stat
 
-- name: Download vault-tpm-helper binary
-  ansible.builtin.get_url:
-    url: https://github.com/ausmartway/vault-tpm-helper/releases/latest/download/vault-tpm-helper-linux-amd64
-    dest: /usr/local/bin/vault-tpm-helper
-    mode: "0755"
+- name: Install Go (required to build vault-tpm-helper)
+  ansible.builtin.package:
+    name: golang
+    state: present
+  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+
+- name: Clone vault-tpm-helper repository
+  ansible.builtin.git:
+    repo: https://github.com/ausmartway/vault-tpm-helper.git
+    dest: /tmp/vault-tpm-helper-build
+    version: v0.1.1
+  when: not vault_tpm_helper_demo_binary_stat.stat.exists
+
+- name: Build vault-tpm-helper from source
+  ansible.builtin.shell:
+    cmd: |
+      cd /tmp/vault-tpm-helper-build
+      go build -o vault-tpm-helper
+      cp vault-tpm-helper /usr/local/bin/
+      chmod 0755 /usr/local/bin/vault-tpm-helper
+    creates: /usr/local/bin/vault-tpm-helper
   when: not vault_tpm_helper_demo_binary_stat.stat.exists
 
 - name: Verify certificates exist

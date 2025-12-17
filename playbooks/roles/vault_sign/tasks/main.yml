@@ -132,7 +132,7 @@
     data:
       csr: "{{ remote_csr_data.content | b64decode }}"
       common_name: "{{ inventory_hostname }}.{{ domain }}"
-      ttl: "720h"
+      ttl: "168h"  # 7 days - reduced from 720h due to CA expiration constraint
     auth_method: approle
     role_id: "{{ role_id }}"  # This is passed in via AAP credentials
     secret_id: "{{ secret_id }}"  # This is passed in via AAP credentials

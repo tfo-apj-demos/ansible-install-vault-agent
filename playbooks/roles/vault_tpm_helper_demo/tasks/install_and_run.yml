@@ -88,6 +88,23 @@
   ansible.builtin.debug:
     msg: "{{ vault_tpm_helper_demo_cert_info.stdout_lines }}"
 
+- name: Fetch Vault root CA certificate
+  ansible.builtin.uri:
+    url: "{{ vault_addr }}/v1/pki/ca/pem"
+    method: GET
+    return_content: true
+    validate_certs: false
+  register: vault_tpm_helper_demo_root_ca
+  delegate_to: localhost
+
+- name: Create complete CA bundle with root
+  ansible.builtin.copy:
+    content: |
+      {{ lookup('file', '/opt/vault-tpm-demo/ca.pem') }}
+      {{ vault_tpm_helper_demo_root_ca.content }}
+    dest: /opt/vault-tpm-demo/ca-bundle.pem
+    mode: "0644"
+
 # Step 3: Run vault-tpm-helper to authenticate
 - name: Authenticate to Vault using vault-tpm-helper
   ansible.builtin.shell:
@@ -95,7 +112,7 @@
       /usr/local/bin/vault-tpm-helper \
         -client-cert /opt/vault-tpm-demo/client.cert.pem \
         -client-key /opt/vault-tpm-demo/client.key.pem \
-        -ca /opt/vault-tpm-demo/ca.pem \
+        -ca /opt/vault-tpm-demo/ca-bundle.pem \
         -vaultaddr {{ vault_addr }} \
         -debug
   register: vault_tpm_helper_demo_token_output

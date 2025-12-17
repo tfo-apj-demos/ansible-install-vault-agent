@@ -231,10 +231,10 @@
       - "Initialized: {{ vault_tpm_helper_demo_health_check.json.initialized | default('N/A') }}"
       - "Sealed: {{ vault_tpm_helper_demo_health_check.json.sealed | default('N/A') }}"
 
-# Step 5: Demonstrate reading a secret (if accessible)
-- name: Attempt to read a KV secret (optional demo)
+# Step 5: Demonstrate reading a secret from KV v2
+- name: Read secret from secrets/data/dev
   ansible.builtin.uri:
-    url: "{{ vault_addr }}/v1/secret/data/demo"
+    url: "{{ vault_addr }}/v1/secrets/data/dev"
     method: GET
     headers:
       X-Vault-Token: "{{ vault_tpm_helper_demo_token }}"
@@ -247,9 +247,16 @@
 - name: Show secret read result
   ansible.builtin.debug:
     msg:
-      - "Secret read attempt result:"
+      - "=========================================="
+      - "Demo: Reading Secret with TPM-Authenticated Token"
+      - "=========================================="
+      - "Secret Path: secrets/data/dev"
       - "Status: {{ vault_tpm_helper_demo_secret_read.status }}"
-      - "{% if vault_tpm_helper_demo_secret_read.status == 200 %}Secret data retrieved successfully{% elif vault_tpm_helper_demo_secret_read.status == 403 %}Access denied (expected if TLS auth role doesn't have KV permissions){% else %}Secret not found or path doesn't exist{% endif %}"
+      - "{% if vault_tpm_helper_demo_secret_read.status == 200 %}✅ Secret retrieved successfully!{% endif %}"
+      - "{% if vault_tpm_helper_demo_secret_read.status == 200 %}API Credential: {{ vault_tpm_helper_demo_secret_read.json.data.data.api_cred | default('N/A') }}{% endif %}"
+      - "{% if vault_tpm_helper_demo_secret_read.status == 403 %}❌ Access denied - TLS auth role needs KV read permissions{% endif %}"
+      - "{% if vault_tpm_helper_demo_secret_read.status == 404 %}⚠️  Secret not found at path{% endif %}"
+      - "=========================================="
 
 - name: Demo summary
   ansible.builtin.debug:

@@ -88,6 +88,11 @@
   ansible.builtin.debug:
     msg: "{{ vault_tpm_helper_demo_cert_info.stdout_lines }}"
 
+- name: Read existing CA file
+  ansible.builtin.slurp:
+    src: /opt/vault-tpm-demo/ca.pem
+  register: vault_tpm_helper_demo_existing_ca
+
 - name: Fetch Vault root CA certificate
   ansible.builtin.uri:
     url: "{{ vault_addr }}/v1/pki/ca/pem"
@@ -96,11 +101,12 @@
     validate_certs: false
   register: vault_tpm_helper_demo_root_ca
   delegate_to: localhost
+  become: false
 
 - name: Create complete CA bundle with root
   ansible.builtin.copy:
     content: |
-      {{ lookup('file', '/opt/vault-tpm-demo/ca.pem') }}
+      {{ vault_tpm_helper_demo_existing_ca.content | b64decode }}
       {{ vault_tpm_helper_demo_root_ca.content }}
     dest: /opt/vault-tpm-demo/ca-bundle.pem
     mode: "0644"

@@ -82,13 +82,13 @@
       # Remove old key if exists
       rm -f /opt/vault-tpm-demo/client.key.pem
 
-      # Generate key with TPM provider (verbose)
+      # Generate RSA key with TPM provider (Vault role requires RSA)
       openssl genpkey \
         -provider tpm2 \
         -provider default \
         -propquery '?provider=tpm2' \
-        -algorithm EC \
-        -pkeyopt ec_paramgen_curve:prime256v1 \
+        -algorithm RSA \
+        -pkeyopt rsa_keygen_bits:2048 \
         -out /opt/vault-tpm-demo/client.key.pem 2>&1
 
       # Show what was created

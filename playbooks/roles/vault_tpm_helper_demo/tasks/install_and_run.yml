@@ -152,6 +152,40 @@
     dest: /opt/vault-tpm-demo/ca-bundle.pem
     mode: "0644"
 
+# Diagnostics: Verify certificate and key match
+- name: Extract public key from certificate
+  ansible.builtin.shell:
+    cmd: openssl x509 -in /opt/vault-tpm-demo/client.cert.pem -pubkey -noout
+  register: vault_tpm_helper_demo_cert_pubkey
+  changed_when: false
+
+- name: Extract public key from TPM private key
+  ansible.builtin.shell:
+    cmd: |
+      openssl pkey -provider default -provider tpm2 \
+        -in /opt/vault-tpm-demo/client.key.pem -pubout
+  register: vault_tpm_helper_demo_key_pubkey
+  changed_when: false
+  environment:
+    OPENSSL_MODULES: /usr/lib64/ossl-modules
+
+- name: Compare public keys
+  ansible.builtin.debug:
+    msg:
+      - "=== Public Key Comparison ==="
+      - "Certificate public key matches private key: {{ vault_tpm_helper_demo_cert_pubkey.stdout == vault_tpm_helper_demo_key_pubkey.stdout }}"
+      - "{% if vault_tpm_helper_demo_cert_pubkey.stdout != vault_tpm_helper_demo_key_pubkey.stdout %}⚠️  WARNING: Keys do not match! Certificate was not signed from this TPM key!{% endif %}"
+
+- name: Check certificate algorithm
+  ansible.builtin.command:
+    cmd: openssl x509 -in /opt/vault-tpm-demo/client.cert.pem -noout -text
+  register: vault_tpm_helper_demo_cert_details
+  changed_when: false
+
+- name: Show certificate signature algorithm
+  ansible.builtin.debug:
+    msg: "{{ vault_tpm_helper_demo_cert_details.stdout_lines | select('search', 'Signature Algorithm') | list }}"
+
 # Step 3: Run vault-tpm-helper to authenticate
 - name: Authenticate to Vault using vault-tpm-helper
   ansible.builtin.shell:

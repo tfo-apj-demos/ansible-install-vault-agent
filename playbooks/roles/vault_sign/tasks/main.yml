@@ -106,7 +106,25 @@
     fail_msg: "Vault AppRole authentication credentials (role_id or secret_id) are not set!"
 
 
+# Debug environment before CSR signing
+- name: Check environment variables for SSL
+  ansible.builtin.shell: |
+    echo "SSL_CERT_FILE=${SSL_CERT_FILE:-NOT SET}"
+    echo "REQUESTS_CA_BUNDLE=${REQUESTS_CA_BUNDLE:-NOT SET}"
+    ls -la /etc/pki/ca-trust/source/anchors/vault-ca.crt
+  environment:
+    SSL_CERT_FILE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+  register: env_debug
+  changed_when: false
+
+- name: Show environment debug
+  ansible.builtin.debug:
+    var: env_debug.stdout_lines
+
 # Authenticate to Vault and Sign CSR (via Execution Environment)
+# TEMPORARY: SSL validation disabled due to EE trust store issues
+# TODO: Re-enable validate_certs once EE has proper CA trust configuration
 - name: Authenticate to Vault and Sign CSR
   community.hashi_vault.vault_write:
     url: "{{ vault_addr }}"
@@ -118,11 +136,7 @@
     auth_method: approle
     role_id: "{{ role_id }}"  # This is passed in via AAP credentials
     secret_id: "{{ secret_id }}"  # This is passed in via AAP credentials
-    validate_certs: true
-    ca_cert: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-  environment:
-    REQUESTS_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
-    CURL_CA_BUNDLE: "/etc/pki/ca-trust/source/anchors/vault-ca.crt"
+    validate_certs: false  # TEMPORARY: Disabled for testing
   register: signed_cert
 
 - name: Debug the signed certificate

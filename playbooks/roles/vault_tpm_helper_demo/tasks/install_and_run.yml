@@ -195,6 +195,7 @@
         -client-key /opt/vault-tpm-demo/client.key.pem \
         -ca /opt/vault-tpm-demo/ca-bundle.pem \
         -vaultaddr {{ vault_addr }} \
+        -name tls-auth \
         -debug
   register: vault_tpm_helper_demo_token_output
   changed_when: false

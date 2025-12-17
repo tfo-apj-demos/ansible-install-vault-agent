@@ -200,9 +200,9 @@
   register: vault_tpm_helper_demo_token_output
   changed_when: false
 
-- name: Extract Vault token from output
+- name: Extract Vault token from output (last line after debug output)
   ansible.builtin.set_fact:
-    vault_tpm_helper_demo_token: "{{ vault_tpm_helper_demo_token_output.stdout | trim }}"
+    vault_tpm_helper_demo_token: "{{ vault_tpm_helper_demo_token_output.stdout_lines | select('match', '^hvs\\..*') | first | default(vault_tpm_helper_demo_token_output.stdout_lines[-1]) }}"
 
 - name: Display authentication result
   ansible.builtin.debug:

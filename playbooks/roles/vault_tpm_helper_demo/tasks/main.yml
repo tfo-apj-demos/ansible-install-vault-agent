@@ -79,8 +79,9 @@
   ansible.builtin.shell:
     cmd: |
       set -x
-      # Remove old key if exists
+      # Remove old key AND CSR if they exist (must stay synchronized!)
       rm -f /opt/vault-tpm-demo/client.key.pem
+      rm -f /opt/vault-tpm-demo/client.csr.pem
 
       # Generate RSA key with TPM provider (Vault role requires RSA)
       openssl genpkey \
@@ -123,7 +124,8 @@
         -key /opt/vault-tpm-demo/client.key.pem \
         -out /opt/vault-tpm-demo/client.csr.pem \
         -subj "/CN={{ inventory_hostname }}.{{ domain | default('hashicorp.local') }}"
-    creates: /opt/vault-tpm-demo/client.csr.pem
+  environment:
+    OPENSSL_MODULES: /usr/lib64/ossl-modules
 
 - name: Read CSR content
   ansible.builtin.slurp:

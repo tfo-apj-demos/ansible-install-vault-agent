@@ -19,10 +19,42 @@
     state: directory
     mode: "0755"
 
-- name: Check if OpenSSL TPM2 provider exists
-  ansible.builtin.stat:
-    path: /usr/lib64/ossl-modules/tpm2.so
-  register: vault_tpm_helper_demo_tpm2_provider_stat
+- name: Check multiple possible TPM2 provider locations
+  ansible.builtin.find:
+    paths:
+      - /usr/lib64/ossl-modules
+      - /usr/local/lib64/ossl-modules
+      - /usr/lib/ossl-modules
+      - /usr/local/lib/ossl-modules
+      - /opt/tpm2-openssl
+    patterns: 'tpm2.so'
+    recurse: yes
+  register: vault_tpm_helper_demo_tpm2_provider_search
+
+- name: Display found TPM2 provider locations
+  ansible.builtin.debug:
+    msg: "Found TPM2 providers: {{ vault_tpm_helper_demo_tpm2_provider_search.files | map(attribute='path') | list }}"
+
+- name: Set TPM2 provider path
+  ansible.builtin.set_fact:
+    vault_tpm_helper_demo_tpm2_provider_path: "{{ vault_tpm_helper_demo_tpm2_provider_search.files[0].path if vault_tpm_helper_demo_tpm2_provider_search.matched > 0 else '/usr/lib64/ossl-modules/tpm2.so' }}"
+
+- name: Show TPM2 provider path to use
+  ansible.builtin.debug:
+    msg: "Using TPM2 provider at: {{ vault_tpm_helper_demo_tpm2_provider_path }}"
+
+- name: Verify OpenSSL can see providers
+  ansible.builtin.command: openssl list -providers
+  register: vault_tpm_helper_demo_openssl_providers
+  changed_when: false
+
+- name: Show OpenSSL providers
+  ansible.builtin.debug:
+    var: vault_tpm_helper_demo_openssl_providers.stdout_lines
+
+- name: Update library cache
+  ansible.builtin.command: ldconfig
+  changed_when: false
 
 - name: Configure OpenSSL TPM2 provider
   ansible.builtin.blockinfile:
@@ -36,19 +68,22 @@
       tpm2 = tpm2_sect
 
       [tpm2_sect]
-      module = /usr/lib64/ossl-modules/tpm2.so
+      module = {{ vault_tpm_helper_demo_tpm2_provider_path }}
+      activate = 1
     marker: "# {mark} TPM2 Provider Setup for vault-tpm-helper demo"
     backup: yes
-  when: vault_tpm_helper_demo_tpm2_provider_stat.stat.exists
+  when: vault_tpm_helper_demo_tpm2_provider_search.matched > 0
 
 # Step 1: Generate TPM-backed key in TSS2 format
 - name: Generate TPM-backed ECC key in TSS2 format
   ansible.builtin.shell:
     cmd: |
-      openssl genpkey -provider tpm2 -algorithm EC \
+      openssl genpkey -provider tpm2 -provider default -algorithm EC \
         -pkeyopt ec_paramgen_curve:prime256v1 \
         -out /opt/vault-tpm-demo/client.key.pem
     creates: /opt/vault-tpm-demo/client.key.pem
+  environment:
+    OPENSSL_MODULES: "{{ vault_tpm_helper_demo_tpm2_provider_path | dirname }}"
   register: vault_tpm_helper_demo_key_gen
 
 - name: Verify key is in TSS2 format

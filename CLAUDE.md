@@ -73,6 +73,40 @@ ansible localhost -m uri -a "url=https://vault.example.com:8200/v1/sys/health va
 ansible-playbook playbooks/verify-vault-agent.yml
 ```
 
+#### Certificate Lifecycle Reporting & Monitoring
+
+**Option 1: Generate HTML/JSON Reports (Ops & Compliance)**
+```bash
+# Generate certificate report from Vault KV inventory
+ansible-playbook playbooks/generate-certificate-report.yml \
+  -e vault_server_address=https://vault.example.com:8200
+
+# View HTML report
+open ~/vault-cert-reports/certificate-report-latest.html
+
+# Check JSON report (for API/Grafana integration)
+cat ~/vault-cert-reports/certificate-report-latest.json
+```
+
+**Option 2: Deploy Prometheus Exporter (Real-Time Grafana Dashboard)**
+```bash
+# Deploy exporter to monitoring server
+ansible-playbook playbooks/deploy-prometheus-exporter.yml \
+  -e vault_server_address=https://vault.example.com:8200 \
+  -e target_host=monitoring-server
+
+# Configure Prometheus to scrape exporter
+# Add to prometheus.yml:
+#   - job_name: 'vault-certificates'
+#     static_configs:
+#       - targets: ['monitoring-server:9090']
+
+# Import Grafana dashboard
+# Use: playbooks/roles/vault_prometheus_exporter/files/grafana-dashboard.json
+```
+
+See [DASHBOARD.md](DASHBOARD.md) for detailed dashboard documentation.
+
 ## Role Dependencies and Execution Context
 
 ### vault_tpm
@@ -111,6 +145,18 @@ ansible-playbook playbooks/verify-vault-agent.yml
 - **Context**: Runs on localhost (AAP Execution Environment)
 - **Purpose**: Updates centralized certificate inventory in Vault KV after issuance
 - **KV Path**: `secrets/certificates/{hostname}`
+
+### vault_cert_report
+- **Context**: Runs on localhost (AAP Execution Environment)
+- **Purpose**: Generates HTML and JSON reports from Vault KV certificate inventory
+- **Outputs**: HTML dashboard (visual), JSON export (machine-readable)
+- **Features**: Summary stats, sortable table, expiry timeline, compliance alerts
+
+### vault_prometheus_exporter
+- **Context**: Runs on monitoring server (become: true)
+- **Purpose**: Deploys Prometheus exporter for real-time certificate monitoring
+- **Exposes**: Metrics on `:9090/metrics` for Prometheus/Grafana integration
+- **Service**: Systemd service that continuously queries Vault KV
 
 ## Key Variables
 
@@ -225,3 +271,43 @@ journalctl -u vault-agent -f
 
 ### CSR Signing Fails
 Verify the vault_sign role can reach Vault and has valid AppRole credentials. Check that the Vault CA certificate is trusted by the execution environment.
+
+## Demo Workflow: Varied Certificate Expiry States
+
+When demonstrating certificate lifecycle management, you may want to show certificates in different states (HEALTHY/WARNING/CRITICAL/EXPIRED) rather than all having the same expiry date. See [DEMO_WORKFLOW.md](DEMO_WORKFLOW.md) for detailed instructions.
+
+### Quick Demo Setup (Immediate Results)
+
+For instant demo with varied certificate states:
+
+```bash
+# 1. Issue certificates normally
+ansible-playbook playbooks/issue-pki-certificate.yml
+
+# 2. Modify Vault KV inventory for varied expiry states
+export VAULT_ADDR=https://vault.hashicorp.local:8200
+vault login  # or export VAULT_TOKEN
+./scripts/demo-immediate-varied-states.sh
+
+# 3. Generate report with varied results
+ansible-playbook playbooks/generate-certificate-report.yml
+open ~/vault-cert-reports/certificate-report-latest.html
+```
+
+This creates a realistic-looking dashboard with:
+- 🟢 HEALTHY: 3 certificates (web-server-*)
+- 🟡 WARNING: 1 certificate (app-server-03)
+- 🟠 CRITICAL: 2 certificates (app-server-01/02)
+- 🔴 EXPIRED: 2 certificates (database-server-*)
+
+### Alternative: Realistic Timeline Demo
+
+For demos where you can wait 2-3 hours for actual certificate expiry:
+
+```bash
+ansible-playbook playbooks/demo-setup-varied-certificates.yml
+# Wait 2-3 hours for database-server certificates to expire
+ansible-playbook playbooks/generate-certificate-report.yml
+```
+
+See [DEMO_WORKFLOW.md](DEMO_WORKFLOW.md) for complete details and additional approaches.

@@ -11,8 +11,8 @@
     "ghcr.io/devcontainers/features/docker-in-docker:2.12.4": {}
   },
 
-  "postCreateCommand": "bash /workspace/.devcontainer/claude-code/scripts/post-create.sh",
-  "postStartCommand": "bash /workspace/.devcontainer/claude-code/scripts/post-start.sh",
+  "postCreateCommand": "bash .devcontainer/claude-code/scripts/post-create.sh",
+  "postStartCommand": "bash .devcontainer/claude-code/scripts/post-start.sh",
 
   "customizations": {
     "vscode": {
@@ -78,6 +78,6 @@
     "OTEL_LOGS_EXPORT_INTERVAL": "${localEnv:OTEL_LOGS_EXPORT_INTERVAL}",
     "OTEL_RESOURCE_ATTRIBUTES": "session.id=${localWorkspaceFolderBasename},job.name=terraform-eval"
   },
-  "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
-  "workspaceFolder": "/workspace"
+  "workspaceMount": "source=${localWorkspaceFolder}/..,target=/workspaces,type=bind,consistency=delegated",
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
 }
